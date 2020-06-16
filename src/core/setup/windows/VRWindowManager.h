@@ -32,7 +32,7 @@ class VRWindowManager {
         VRWindowPtr getWindow(string name);
 
         VRWindowPtr addGlutWindow  (string name);
-        VRWindowPtr addGtkWindow   (string name, string glarea = "glarea");
+        VRWindowPtr addGtkWindow   (string name, string glarea = "glarea", string msaa = "x4");
         VRWindowPtr addMultiWindow (string name);
         void removeWindow   (string name);
 
@@ -49,8 +49,6 @@ class VRWindowManager {
         void stopWindows();
 
         VRGtkWindowPtr getEditorWindow();
-
-        void setMultisampling(bool on);
 
         void save(XMLElementPtr node);
         void load(XMLElementPtr node);

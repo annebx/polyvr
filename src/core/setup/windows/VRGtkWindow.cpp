@@ -2,6 +2,7 @@
 #include "core/gui/VRGuiUtils.h"
 #include <gtk/gtkdrawingarea.h>
 #include <gdk/gdkgl.h>
+#include <gdk/gdkglconfig.h>
 #include <gtk/gtkgl.h>
 #include <boost/thread/recursive_mutex.hpp>
 
@@ -14,22 +15,89 @@
 #include "core/scene/VRScene.h"
 #include "core/gui/VRGuiManager.h"
 
+
+
+// patch gdkglext MSAA
+static GdkGLConfig* gdk_gl_config_new_rgb(GdkScreen* screen, GdkGLConfigMode  mode, int msaa) {
+  int list[32];
+  int n = 0;
+
+  list[n++] = GDK_GL_RGBA;
+  list[n++] = GDK_GL_RED_SIZE;
+  list[n++] = 1;
+  list[n++] = GDK_GL_GREEN_SIZE;
+  list[n++] = 1;
+  list[n++] = GDK_GL_BLUE_SIZE;
+  list[n++] = 1;
+  if (mode & GDK_GL_MODE_ALPHA)
+    {
+      list[n++] = GDK_GL_ALPHA_SIZE;
+      list[n++] = 1;
+    }
+  if (mode & GDK_GL_MODE_DOUBLE) list[n++] = GDK_GL_DOUBLEBUFFER;
+  if (mode & GDK_GL_MODE_STEREO) list[n++] = GDK_GL_STEREO;
+  if (mode & GDK_GL_MODE_DEPTH) {
+      list[n++] = GDK_GL_DEPTH_SIZE;
+      list[n++] = 1;
+    }
+  if (mode & GDK_GL_MODE_STENCIL) {
+      list[n++] = GDK_GL_STENCIL_SIZE;
+      list[n++] = 1;
+    }
+  if (mode & GDK_GL_MODE_ACCUM) {
+      list[n++] = GDK_GL_ACCUM_RED_SIZE;
+      list[n++] = 1;
+      list[n++] = GDK_GL_ACCUM_GREEN_SIZE;
+      list[n++] = 1;
+      list[n++] = GDK_GL_ACCUM_BLUE_SIZE;
+      list[n++] = 1;
+      if (mode & GDK_GL_MODE_ALPHA) {
+          list[n++] = GDK_GL_ACCUM_ALPHA_SIZE;
+          list[n++] = 1;
+        }
+    }
+   if (mode & GDK_GL_MODE_MULTISAMPLE && msaa >= 2) {
+       list[n++] = GDK_GL_SAMPLE_BUFFERS;
+       list[n++] = 1;
+       list[n++] = GDK_GL_SAMPLES;
+       list[n++] = msaa; // FSAA // 2x 4x 16x
+    }
+  list[n] = GDK_GL_ATTRIB_LIST_NONE;
+
+#ifdef GDKGLEXT_MULTIHEAD_SUPPORT
+  return gdk_gl_config_new_for_screen(screen, list);
+#else
+  return gdk_gl_config_new (list);
+#endif
+}
+
+GdkGLConfig* gdk_gl_config_new_by_mode (GdkGLConfigMode mode, int msaa) {
+#ifdef GDKGLEXT_MULTIHEAD_SUPPORT
+  GdkScreen* screen = gdk_screen_get_default ();
+#else
+  GdkScreen* screen = NULL;
+#endif
+  return gdk_gl_config_new_rgb(screen, mode, msaa);
+}
+
 typedef boost::recursive_mutex::scoped_lock PLock;
 
 OSG_BEGIN_NAMESPACE;
 using namespace std;
 namespace PL = std::placeholders;
 
-VRGtkWindow::VRGtkWindow(GtkDrawingArea* da) {
+VRGtkWindow::VRGtkWindow(GtkDrawingArea* da, string msaa) {
     type = 2;
     drawArea = da;
     widget = (GtkWidget*)drawArea;
     if (gtk_widget_get_realized(widget)) cout << "Warning: glarea is realized!\n";
 
-    auto mode = (GdkGLConfigMode)(GDK_GL_MODE_RGB | GDK_GL_MODE_DOUBLE | GDK_GL_MODE_DEPTH | GDK_GL_MODE_STENCIL);
+
+    int MSAA = toInt(subString(msaa,1,-1));
+    auto mode = (GdkGLConfigMode)(GDK_GL_MODE_RGBA | GDK_GL_MODE_DOUBLE | GDK_GL_MODE_DEPTH | GDK_GL_MODE_STENCIL | GDK_GL_MODE_MULTISAMPLE);
     if (VROptions::get()->getOption<bool>("active_stereo"))
-        mode = (GdkGLConfigMode)(GDK_GL_MODE_RGB | GDK_GL_MODE_DOUBLE | GDK_GL_MODE_DEPTH | GDK_GL_MODE_STENCIL | GDK_GL_MODE_STEREO);
-    GdkGLConfig* glConfigMode = gdk_gl_config_new_by_mode(mode);
+        mode = (GdkGLConfigMode)(GDK_GL_MODE_RGBA | GDK_GL_MODE_DOUBLE | GDK_GL_MODE_DEPTH | GDK_GL_MODE_STENCIL | GDK_GL_MODE_MULTISAMPLE | GDK_GL_MODE_STEREO);
+    GdkGLConfig* glConfigMode = gdk_gl_config_new_by_mode(mode, MSAA);
     gtk_widget_set_gl_capability(widget,glConfigMode,NULL,true,GDK_GL_RGBA_TYPE);
 
     gtk_widget_show(widget);
@@ -62,7 +130,7 @@ VRGtkWindow::~VRGtkWindow() {
 }
 
 VRGtkWindowPtr VRGtkWindow::ptr() { return static_pointer_cast<VRGtkWindow>( shared_from_this() ); }
-VRGtkWindowPtr VRGtkWindow::create(GtkDrawingArea* da) { return shared_ptr<VRGtkWindow>(new VRGtkWindow(da) ); }
+VRGtkWindowPtr VRGtkWindow::create(GtkDrawingArea* da, string msaa) { return shared_ptr<VRGtkWindow>(new VRGtkWindow(da, msaa) ); }
 
 void VRGtkWindow::setCursor(string c) {
     GdkWindow* win = widget->window;
@@ -253,7 +321,7 @@ void VRGtkWindow::on_realize() {
     GdkGLDrawable* gldrawable = gtk_widget_get_gl_drawable (widget);
     gdk_gl_drawable_gl_begin(gldrawable, glcontext);
     win->init();
-    win->resize(widget->allocation.width,widget->allocation.height);
+    resize(widget->allocation.width,widget->allocation.height);
     gdk_gl_drawable_gl_end (gldrawable);
 }
 
@@ -281,3 +349,8 @@ void VRGtkWindow::save(XMLElementPtr node) { VRWindow::save(node); }
 void VRGtkWindow::load(XMLElementPtr node) { VRWindow::load(node); }
 
 OSG_END_NAMESPACE;
+
+
+
+
+
