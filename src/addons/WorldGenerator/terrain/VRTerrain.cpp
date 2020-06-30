@@ -177,7 +177,7 @@ void VRTerrain::setMap( VRTexturePtr t, int channel ) {
         heigthsTex = tg.compose(0);
         for (int i = 0; i < dim[0]; i++) {
             for (int j = 0; j < dim[1]; j++) {
-                double h = t->getPixel(Vec3i(i,j,0))[0];
+                double h = t->getPixelVec(Vec3i(i,j,0))[0];
                 heigthsTex->setPixel(Vec3i(i,j,0), Color4f(1.0,1.0,1.0,h));
             }
         }
@@ -189,6 +189,23 @@ void VRTerrain::setMap( VRTexturePtr t, int channel ) {
     mat->clearTransparency();
     updateTexelSize();
     setupGeo();
+}
+
+void VRTerrain::paintHeights(string woods, string gravel) {
+    mat->setTexture(woods, 0, 1);
+    mat->setTexture(gravel, 0, 2);
+    mat->setShaderParameter("texWoods", 1);
+    mat->setShaderParameter("texGravel", 2);
+    mat->setShaderParameter("doHeightTextures", 1);
+    mat->clearTransparency();
+}
+
+void VRTerrain::paintHeights(string path, Color4f mCol, float mAmount) {
+    mat->setTexture(path, 0, 3);
+    if (mAmount > 0) mat->getTexture(3)->mixColor(mCol, mAmount);
+    mat->setShaderParameter("texPic", 3);
+    mat->setShaderParameter("doHeightTextures", 2);
+    mat->clearTransparency();
 }
 
 void VRTerrain::updateTexelSize() {
@@ -312,10 +329,10 @@ vector<Vec3d> VRTerrain::probeHeight( Vec2d p ) {
     int i = round(uv[0]-0.5);
     int j = round(uv[1]-0.5);
 
-    double h00 = heigthsTex->getPixel(Vec3i(i,j,0))[3];
-    double h10 = heigthsTex->getPixel(Vec3i(i+1,j,0))[3];
-    double h01 = heigthsTex->getPixel(Vec3i(i,j+1,0))[3];
-    double h11 = heigthsTex->getPixel(Vec3i(i+1,j+1,0))[3];
+    double h00 = heigthsTex->getPixelVec(Vec3i(i,j,0))[3];
+    double h10 = heigthsTex->getPixelVec(Vec3i(i+1,j,0))[3];
+    double h01 = heigthsTex->getPixelVec(Vec3i(i,j+1,0))[3];
+    double h11 = heigthsTex->getPixelVec(Vec3i(i+1,j+1,0))[3];
 
     double u = uv[0]-i;
     double v = uv[1]-j;
@@ -345,7 +362,7 @@ void VRTerrain::btPhysicalize() {
     for (int i = 0; i < dim[0]; i++) {
         for (int j = 0; j < dim[1]; j++) {
             int k = j*dim[0]+i;
-            float h = heigthsTex->getPixel(Vec3i(i,j,0))[3];
+            float h = heigthsTex->getPixelVec(Vec3i(i,j,0))[3];
             (*physicsHeightBuffer)[k] = h + roadTerrainOffset;
             if (Hmax < h) Hmax = h;
         }
@@ -383,7 +400,7 @@ Boundingbox VRTerrain::getBoundingBox() {
 
     for (int i=0; i<heigthsTex->getSize()[0]; i++) {
         for (int j=0; j<heigthsTex->getSize()[1]; j++) {
-            auto h = heigthsTex->getPixel(Vec3i(i,j,0))[3];
+            auto h = heigthsTex->getPixelVec(Vec3i(i,j,0))[3];
             if (h < hmin) hmin = h;
             if (h > hmax) hmax = h;
         }
@@ -523,10 +540,10 @@ double VRTerrain::getHeight(Vec2d p, bool useEmbankments) {
     int i = round(uv[0]-0.5);
     int j = round(uv[1]-0.5);
 
-    double h00 = heigthsTex->getPixel(Vec3i(i,j,0))[3];
-    double h10 = heigthsTex->getPixel(Vec3i(i+1,j,0))[3];
-    double h01 = heigthsTex->getPixel(Vec3i(i,j+1,0))[3];
-    double h11 = heigthsTex->getPixel(Vec3i(i+1,j+1,0))[3];
+    double h00 = heigthsTex->getPixelVec(Vec3i(i,j,0))[3];
+    double h10 = heigthsTex->getPixelVec(Vec3i(i+1,j,0))[3];
+    double h01 = heigthsTex->getPixelVec(Vec3i(i,j+1,0))[3];
+    double h11 = heigthsTex->getPixelVec(Vec3i(i+1,j+1,0))[3];
 
     double u = uv[0]-i;
     double v = uv[1]-j;
@@ -610,7 +627,7 @@ void VRTerrain::flatten(vector<Vec2d> perimeter, float h) {
             auto pix = Vec2d(i*1.0/(dim[0]-1), j*1.0/(dim[1]-1));
             if (poly->isInside(pix)) {
                 Vec3i pixK = Vec3i(i,j,0);
-                Color4f col = heigthsTex->getPixel(pixK);
+                Color4f col = heigthsTex->getPixelVec(pixK);
                 col[3] = h;
                 heigthsTex->setPixel(pixK, col);
             }
@@ -693,22 +710,6 @@ void VRTerrain::projectOSM() {
         }
     }
     setMap(t);*/
-}
-
-void VRTerrain::paintHeights(string woods, string gravel) {
-    mat->setTexture(woods, 0, 1);
-    mat->setTexture(gravel, 0, 2);
-    mat->setShaderParameter("texWoods", 1);
-    mat->setShaderParameter("texGravel", 2);
-    mat->setShaderParameter("doHeightTextures", 1);
-    mat->clearTransparency();
-}
-
-void VRTerrain::paintHeights(string path) {
-    mat->setTexture(path, 0, 3);
-    mat->setShaderParameter("texPic", 3);
-    mat->setShaderParameter("doHeightTextures", 2);
-    mat->clearTransparency();
 }
 
 void VRTerrain::addEmbankment(string ID, PathPtr p1, PathPtr p2, PathPtr p3, PathPtr p4) {
@@ -896,7 +897,7 @@ void main( void ) {
 	}
 
 	if (isLit == 1) applyBlinnPhong();
-	else gl_FragColor = mix(color, vec4(1,1,1,1), 0.2);
+	else gl_FragColor = color;//mix(color, vec4(1,1,1,1), 0.2);
 }
 );
 
