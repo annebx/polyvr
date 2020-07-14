@@ -165,7 +165,7 @@ bool VRGeometry::applyIntersectionAction(Action* action) {
 /** initialise a geometry object with his name **/
 VRGeometry::VRGeometry(string name) : VRTransform(name) {
     type = "Geometry";
-    addAttachment("geometry", 0);
+    addTag("geometry");
 
     store("sourcetype", &source.type);
     store("sourceparam", &source.parameter);
@@ -179,7 +179,7 @@ VRGeometry::VRGeometry(string name) : VRTransform(name) {
 VRGeometry::VRGeometry(string name, bool hidden) : VRTransform(name) {
     setNameSpace("system");
     type = "Geometry";
-    addAttachment("geometry", 0);
+    addTag("geometry");
     if (hidden) setPersistency(0);
 }
 
@@ -330,6 +330,7 @@ void VRGeometry::makeUnique() {
 void VRGeometry::makeSingleIndex() {
     if (!mesh || !mesh->geo) return;
     if (!mesh->geo->isSingleIndex()) {
+
         VRGeoData data(ptr());
         data.makeSingleIndex();
     }
