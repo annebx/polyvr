@@ -679,6 +679,10 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="src/core/networking/mongoose/mongoose.h" />
+		<Unit filename="src/core/networking/tcp/VRTCPClient.cpp" />
+		<Unit filename="src/core/networking/tcp/VRTCPClient.h" />
+		<Unit filename="src/core/networking/tcp/VRTCPServer.cpp" />
+		<Unit filename="src/core/networking/tcp/VRTCPServer.h" />
 		<Unit filename="src/core/objects/OSGCamera.cpp" />
 		<Unit filename="src/core/objects/OSGCamera.h" />
 		<Unit filename="src/core/objects/OSGObject.cpp" />
@@ -965,6 +969,8 @@
 		<Unit filename="src/core/scripting/VRPyObject.h" />
 		<Unit filename="src/core/scripting/VRPyObjectManager.cpp" />
 		<Unit filename="src/core/scripting/VRPyObjectManager.h" />
+		<Unit filename="src/core/scripting/VRPyPDF.cpp" />
+		<Unit filename="src/core/scripting/VRPyPDF.h" />
 		<Unit filename="src/core/scripting/VRPyPatchSelection.cpp" />
 		<Unit filename="src/core/scripting/VRPyPatchSelection.h" />
 		<Unit filename="src/core/scripting/VRPyPath.cpp" />
@@ -1170,6 +1176,8 @@
 		<Unit filename="src/core/utils/VRName.h" />
 		<Unit filename="src/core/utils/VROptions.cpp" />
 		<Unit filename="src/core/utils/VROptions.h" />
+		<Unit filename="src/core/utils/VRPDF.cpp" />
+		<Unit filename="src/core/utils/VRPDF.h" />
 		<Unit filename="src/core/utils/VRProfiler.cpp" />
 		<Unit filename="src/core/utils/VRProfiler.h" />
 		<Unit filename="src/core/utils/VRProgress.cpp" />
