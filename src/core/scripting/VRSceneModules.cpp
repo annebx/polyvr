@@ -89,6 +89,7 @@
 #include "addons/Engineering/Factory/VRPyProduction.h"
 #include "addons/Engineering/Factory/VRPyAMLLoader.h"
 #include "addons/Engineering/Mechanics/VRPyMechanism.h"
+#include "addons/Engineering/Machining/VRPyMachining.h"
 #include "addons/Engineering/VRPyNumberingEngine.h"
 #include "addons/Semantics/Segmentation/VRPySegmentation.h"
 #include "addons/Semantics/Segmentation/VRPyAdjacencyGraph.h"
@@ -115,7 +116,9 @@
 #endif
 
 #ifndef WITHOUT_BULLET
+#ifndef WITHOUT_VIRTUOSE
 #include "VRPyHaptic.h"
+#endif
 #include "addons/Bullet/Particles/VRPyParticles.h"
 #include "addons/Bullet/Fluids/VRPyFluids.h"
 #include "addons/Bullet/CarDynamics/VRPyCarDynamics.h"
@@ -164,6 +167,7 @@ void VRSceneModules::setup(VRScriptManager* sm, PyObject* pModVR) {
     sm->registerModule<VRPyPointCloud>("PointCloud", pModVR, VRPyTransform::typeRef);
 #ifndef WITHOUT_AV
     sm->registerModule<VRPySound>("Sound", pModVR);
+    sm->registerModule<VRPyVideo>("Video", pModVR);
     sm->registerModule<VRPySoundManager>("SoundManager", pModVR);
     sm->registerModule<VRPyRecorder>("Recorder", pModVR);
 #endif
@@ -229,6 +233,10 @@ void VRSceneModules::setup(VRScriptManager* sm, PyObject* pModVR) {
     sm->registerModule<VRPySegmentation>("Segmentation", pModVR);
     sm->registerModule<VRPyAdjacencyGraph>("AdjacencyGraph", pModVR);
     sm->registerModule<VRPyMechanism>("Mechanism", pModVR, VRPyObject::typeRef);
+    sm->registerModule<VRPyMachiningSimulation>("MachiningSimulation", pModVR);
+    sm->registerModule<VRPyMachiningCode>("MachiningCode", pModVR);
+    sm->registerModule<VRPyMachiningKinematics>("MachiningKinematics", pModVR);
+    sm->registerModule<VRPyCartesianKinematics>("CartesianKinematics", pModVR, VRPyMachiningKinematics::typeRef);
     sm->registerModule<VRPyNumberingEngine>("NumberingEngine", pModVR, VRPyGeometry::typeRef);
     sm->registerModule<VRPySkeleton>("Skeleton", pModVR, VRPyObject::typeRef);
     sm->registerModule<VRPyCharacter>("Character", pModVR, VRPyObject::typeRef);
@@ -316,12 +324,16 @@ void VRSceneModules::setup(VRScriptManager* sm, PyObject* pModVR) {
 
 #ifndef WITHOUT_BULLET
     sm->registerModule<VRPyCollision>("Collision", pModVR);
+#ifndef WITHOUT_VIRTUOSE
     sm->registerModule<VRPyHaptic>("Haptic", pModVR, VRPyDevice::typeRef);
+#endif
     sm->registerModule<VRPyParticles>("Particles", pModVR, VRPyGeometry::typeRef);
     sm->registerModule<VRPyFluids>("Fluids", pModVR, VRPyParticles::typeRef);
     sm->registerModule<VRPyMetaBalls>("MetaBalls", pModVR, VRPyObject::typeRef);
     sm->registerModule<VRPyCarDynamics>("CarDynamics", pModVR, VRPyObject::typeRef);
+#ifndef WITHOUT_AV
     sm->registerModule<VRPyCarSound>("CarSound", pModVR);
+#endif
     sm->registerModule<VRPyDriver>("Driver", pModVR);
     sm->registerModule<VRPyTrafficSimulation>("TrafficSimulation", pModVR, VRPyObject::typeRef);
 #endif
