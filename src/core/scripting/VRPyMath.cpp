@@ -777,8 +777,10 @@ PyMethodDef VRPyOctreeNode::methods[] = {
 #ifndef WITHOUT_LAPACKE_BLAS
 PyMethodDef VRPyPCA::methods[] = {
     {"add", PyWrap2( PCA, add, "Add point", void, Vec3d ) },
-    {"compute", PyWrap2( PCA, compute, "Compute", Pose ) },
+    {"addMesh", PyWrap2( PCA, addMesh, "Add mesh vertex positions", void, VRObjectPtr ) },
+    {"compute", PyWrap2( PCA, compute, "Compute, pose result contains: scale contains eigenvalues; dir, x, up contains eigenvectors; the position is the covariance parameters", Pose ) },
     {"size", PyWrap2( PCA, size, "Get amount of points", int ) },
+    {"clear", PyWrap2( PCA, clear, "Clear points", void ) },
     {NULL}  /* Sentinel */
 };
 #endif

@@ -13,6 +13,8 @@
 #include "core/objects/material/VRTextureGenerator.h"
 #include "core/objects/geometry/VRGeometry.h"
 #include "core/objects/geometry/VRSky.h"
+#include "core/setup/VRSetup.h"
+#include "core/setup/windows/VRGtkWindow.h"
 #include "core/scene/VRScene.h"
 #include "core/scene/rendering/VRDefShading.h"
 #include "core/math/boundingbox.h"
@@ -75,6 +77,7 @@ OSG_END_NAMESPACE;
 vector<VRTextureRendererWeakPtr> TRinstances;
 
 void VRTextureRenderer::test() {
+    return;
     NodeRefPtr     flagScene = makeCoredNode<Group>();
     GeometryRefPtr flagGeo   = makePlaneGeo(4, 2, 1, 1);
     flagGeo->setDlistCache(false);
