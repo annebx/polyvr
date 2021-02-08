@@ -408,7 +408,7 @@ typedef struct {
     gboolean(*realize_gl_context)     (GdkWindow* window,
         GdkGLContext* context,
         GError** error);
-    void         (*invalidate_for_new_frame)(GdkWindow* window,
+    void         (*invalidate_for_new_frame)(_GdkWindow* window,
         cairo_region_t* update_area);
 
     GdkDrawingContext* (*create_draw_context)  (GdkWindow* window,
@@ -533,9 +533,9 @@ static inline GdkGLContextPrivate* gdk_gl_context_get_instance_private(GdkGLCont
 
 _GdkWindowImplClass* getGdkWindowImplClass() {
 #ifndef _WIN32
-    GType* t = g_type_from_name("GdkWindowImplX11");
+    GType t = g_type_from_name("GdkWindowImplX11");
 #else
-    GType* t = g_type_from_name("GdkWindowImplWin32");
+    GType t = g_type_from_name("GdkWindowImplWin32");
 #endif
     return g_type_class_ref(t);
 }
@@ -694,7 +694,7 @@ typedef struct {
 
 void _gdk_x11_window_invalidate_for_new_frame (_GdkWindow *window, cairo_region_t *update_area) {
     cairo_rectangle_int_t window_rect;
-    GdkDisplay *display = gdk_window_get_display (window);
+    GdkDisplay* display = gdk_window_get_display((GdkWindow*)window);
     _GdkX11Display *display_x11 = (_GdkX11Display*) (display);
     Display* dpy = display_x11->xdisplay;
     gboolean invalidate_all;
@@ -716,10 +716,8 @@ void _gdk_x11_window_invalidate_for_new_frame (_GdkWindow *window, cairo_region_
     }
 
     invalidate_all = FALSE;
-    if (buffer_age >= 4) {
-        cairo_rectangle_int_t whole_window = { 0, 0, gdk_window_get_width (window), gdk_window_get_height (window) };
-        invalidate_all = TRUE;
-    } else {
+    if (buffer_age >= 4) invalidate_all = TRUE;
+    else {
         if (buffer_age == 0) invalidate_all = TRUE; // fixed black widgets here and above
         if (buffer_age >= 1) {
             if (window->old_updated_area[0]) cairo_region_union (update_area, window->old_updated_area[0]);
@@ -731,15 +729,16 @@ void _gdk_x11_window_invalidate_for_new_frame (_GdkWindow *window, cairo_region_
         }
     }
 
-    if (invalidate_all) {
+    if (invalidate_all || global_invalidate) {
         window_rect.x = 0;
         window_rect.y = 0;
-        window_rect.width = gdk_window_get_width (window);
-        window_rect.height = gdk_window_get_height (window);
+        window_rect.width = gdk_window_get_width ((GdkWindow*)window);
+        window_rect.height = gdk_window_get_height ((GdkWindow*)window);
 
         /* If nothing else is known, repaint everything so that the back
          buffer is fully up-to-date for the swapbuffer */
         cairo_region_union_rectangle (update_area, &window_rect);
+        global_invalidate = FALSE;
     }
 }
 
@@ -1190,77 +1189,49 @@ typedef struct {
 } _GdkWindowImplWin32;
 
 static gboolean
-_set_pixformat_for_hdc(HDC              hdc,
-    gint* best_idx,
-    const gboolean   need_alpha_bits,
-    _GdkWin32Display* display)
-{
+_set_pixformat_for_hdc(HDC hdc, gint* best_idx, _GdkWin32Display* display) {
     PIXELFORMATDESCRIPTOR pfd;
     gboolean set_pixel_format_result = FALSE;
 
     /* one is only allowed to call SetPixelFormat(), and so ChoosePixelFormat()
      * one single time per window HDC
      */
-    *best_idx = _get_wgl_pfd(hdc, need_alpha_bits, &pfd, display);
-    if (*best_idx != 0)
-        set_pixel_format_result = SetPixelFormat(hdc, *best_idx, &pfd);
+    *best_idx = vr_get_wgl_pfd(hdc, &pfd, display); // vr_get_wgl_pfd
+    if (*best_idx != 0) set_pixel_format_result = SetPixelFormat(hdc, *best_idx, &pfd);
 
     /* ChoosePixelFormat() or SetPixelFormat() failed, bail out */
-    if (*best_idx == 0 || !set_pixel_format_result)
-        return FALSE;
-
+    if (*best_idx == 0 || !set_pixel_format_result) return FALSE;
     return TRUE;
 }
 
-static HGLRC
-_create_gl_context_with_attribs(HDC           hdc,
-    HGLRC         hglrc_base,
-    GdkGLContext* share,
-    int           flags,
-    int           major,
-    int           minor,
-    gboolean* is_legacy)
-{
+static HGLRC vr_create_gl_context_with_attribs(HDC hdc, HGLRC hglrc_base, int flags, int major, int minor) {
     HGLRC hglrc;
     _GdkWin32GLContext* context_win32;
 
-    /* if we have wglCreateContextAttribsARB(), create a
-    * context with the compatibility profile if a legacy
-    * context is requested, or when we go into fallback mode
-    */
-    int profile = *is_legacy ? WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB :
-        WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+    //major = 2;// 3;
+    //minor = 1;// 0;
+
+    printf("vr_create_gl_context_with_attribs %i %i\n", major, minor);
 
     int attribs[] = {
-      WGL_CONTEXT_PROFILE_MASK_ARB,   profile,
-      WGL_CONTEXT_MAJOR_VERSION_ARB, *is_legacy ? 3 : major,
-      WGL_CONTEXT_MINOR_VERSION_ARB, *is_legacy ? 0 : minor,
-      WGL_CONTEXT_FLAGS_ARB,          flags,
+      WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB,
+      WGL_CONTEXT_MAJOR_VERSION_ARB, major,
+      WGL_CONTEXT_MINOR_VERSION_ARB, minor,
+      WGL_CONTEXT_FLAGS_ARB,         flags,
       0
     };
 
-    if (share != NULL)
-        context_win32 = GDK_WIN32_GL_CONTEXT(share);
-
-    hglrc = wglCreateContextAttribsARB(hdc,
-        share != NULL ? context_win32->hglrc : NULL,
-        attribs);
-
+    hglrc = wglCreateContextAttribsARB(hdc, NULL, attribs);
     return hglrc;
 }
 
-static gboolean
-_ensure_legacy_gl_context(HDC           hdc,
-    HGLRC         hglrc_legacy, GdkGLContext* share) {
+static gboolean _ensure_legacy_gl_context(HDC hdc, HGLRC hglrc_legacy, GdkGLContext* share) {
     _GdkWin32GLContext* context_win32;
 
-    if (!wglMakeCurrent(hdc, hglrc_legacy))
-        return FALSE;
+    if (!wglMakeCurrent(hdc, hglrc_legacy)) return FALSE;
 
-    if (share != NULL)
-    {
+    if (share != NULL) {
         context_win32 = GDK_WIN32_GL_CONTEXT(share);
-
         return wglShareLists(hglrc_legacy, context_win32->hglrc);
     }
 
@@ -1291,19 +1262,12 @@ _create_gl_context(HDC           hdc,
     {
         HGLRC hglrc;
 
-        if (!wglMakeCurrent(hdc, hglrc_base))
-        {
+        if (!wglMakeCurrent(hdc, hglrc_base)) {
             success = FALSE;
             goto gl_fail;
         }
 
-        hglrc = _create_gl_context_with_attribs(hdc,
-            hglrc_base,
-            share,
-            flags,
-            major,
-            minor,
-            is_legacy);
+        hglrc = vr_create_gl_context_with_attribs(hdc, hglrc_base, flags, major, minor);
 
         /* return the legacy context we have if it could be setup properly, in case the 3.0+ context creation failed */
         if (hglrc == NULL)
@@ -1311,12 +1275,7 @@ _create_gl_context(HDC           hdc,
             if (!(*is_legacy))
             {
                 /* If we aren't using a legacy context in the beginning, try again with a compatibility profile 3.0 context */
-                hglrc = _create_gl_context_with_attribs(hdc,
-                    hglrc_base,
-                    share,
-                    flags,
-                    0, 0,
-                    is_legacy);
+                hglrc = vr_create_gl_context_with_attribs(hdc, hglrc_base, flags, 3, 0);
 
                 *is_legacy = TRUE;
             }
@@ -1404,10 +1363,7 @@ _gdk_win32_window_lacks_wm_decorations(_GdkWindow* window)
     return !has_any_decorations;
 }
 
-static gboolean
-get_effective_window_decorations(_GdkWindow* window,
-    GdkWMDecoration* decoration)
-{
+static gboolean get_effective_window_decorations(_GdkWindow* window, GdkWMDecoration* decoration) {
     _GdkWindowImplWin32* impl;
 
     impl = (_GdkWindowImplWin32*)window->impl;
@@ -1493,26 +1449,18 @@ get_effective_window_decorations(_GdkWindow* window,
     return FALSE;
 }
 
-static void
-update_single_bit(LONG* style,
-    gboolean all,
-    int      gdk_bit,
-    int      style_bit)
-{
+static void update_single_bit(LONG* style, gboolean all, int gdk_bit, int style_bit) {
     /* all controls the interpretation of gdk_bit -- if all is TRUE,
      * gdk_bit indicates whether style_bit is off; if all is FALSE, gdk
      * bit indicate whether style_bit is on
      */
-    if ((!all && gdk_bit) || (all && !gdk_bit))
-        *style |= style_bit;
-    else
-        *style &= ~style_bit;
+    if ((!all && gdk_bit) || (all && !gdk_bit)) *style |= style_bit;
+    else *style &= ~style_bit;
 }
 
 #define SWP_NOZORDER_SPECIFIED HWND_TOP
 
-void
-_gdk_win32_window_update_style_bits(_GdkWindow* window) {
+void _gdk_win32_window_update_style_bits(_GdkWindow* window) {
     _GdkWindowImplWin32* impl = (_GdkWindowImplWin32*)window->impl;
     GdkWMDecoration decorations;
     LONG old_style, new_style, old_exstyle, new_exstyle;
@@ -1634,17 +1582,12 @@ _gdk_win32_window_update_style_bits(_GdkWindow* window) {
         flags);
 }
 
-void
-gdk_gl_context_set_is_legacy(GdkGLContext* context,
-    gboolean      is_legacy)
-{
+void gdk_gl_context_set_is_legacy(GdkGLContext* context, gboolean is_legacy) {
     GdkGLContextPrivate* priv = gdk_gl_context_get_instance_private(context);
-
     priv->is_legacy = !!is_legacy;
 }
 
-gboolean
-_gdk_win32_gl_context_realize(GdkGLContext* context, GError** error) {
+gboolean vr_gdk_win32_gl_context_realize(GdkGLContext* context, GError** error) {
     GdkGLContext* share = gdk_gl_context_get_shared_context(context);
     _GdkWin32GLContext* context_win32 = GDK_WIN32_GL_CONTEXT(context);
 
@@ -1662,13 +1605,8 @@ _gdk_win32_gl_context_realize(GdkGLContext* context, GError** error) {
     _GdkWindowImplWin32* impl = (_GdkWindowImplWin32*)window->impl;
     _GdkWin32Display* win32_display = (_GdkWin32Display*)gdk_window_get_display(window);
 
-    if (!_set_pixformat_for_hdc(context_win32->gl_hdc,
-        &pixel_format,
-        context_win32->need_alpha_bits,
-        win32_display))
-    {
-        g_set_error_literal(error, GDK_GL_ERROR,
-            GDK_GL_ERROR_UNSUPPORTED_FORMAT, "No available configurations for the given pixel format");
+    if (!_set_pixformat_for_hdc(context_win32->gl_hdc, &pixel_format, win32_display)) {
+        g_set_error_literal(error, GDK_GL_ERROR, GDK_GL_ERROR_UNSUPPORTED_FORMAT, "No available configurations for the given pixel format");
         return FALSE;
     }
 
@@ -1677,36 +1615,23 @@ _gdk_win32_gl_context_realize(GdkGLContext* context, GError** error) {
     compat_bit = gdk_gl_context_get_forward_compatible(context);
 
     /* if there isn't wglCreateContextAttribsARB(), or if GDK_GL_LEGACY is set, we default to a legacy context */
-    legacy_bit = !win32_display->hasWglARBCreateContext ||
-        g_getenv("GDK_GL_LEGACY") != NULL;
+    legacy_bit = !win32_display->hasWglARBCreateContext || g_getenv("GDK_GL_LEGACY") != NULL;
 
     /*
      * A legacy context cannot be shared with core profile ones, so this means we
      * must stick to a legacy context if the shared context is a legacy context
      */
-    if (share != NULL && gdk_gl_context_is_legacy(share))
-        legacy_bit = TRUE;
+    if (share != NULL && gdk_gl_context_is_legacy(share)) legacy_bit = TRUE;
 
-    if (debug_bit)
-        flags |= WGL_CONTEXT_DEBUG_BIT_ARB;
-    if (compat_bit)
-        flags |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
+    if (debug_bit) flags |= WGL_CONTEXT_DEBUG_BIT_ARB;
+    if (compat_bit) flags |= WGL_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB;
 
-    //printf(" - - - _gdk_win32_gl_context_realize %i %i %i %i %i %i\n", legacy_bit, debug_bit, compat_bit, glver_major, glver_minor, context_win32->need_alpha_bits);
+    printf(" - - - vr_gdk_win32_gl_context_realize %i %i %i %i %i\n", legacy_bit, debug_bit, compat_bit, glver_major, glver_minor);
 
-    hglrc = _create_gl_context(context_win32->gl_hdc,
-        share,
-        flags,
-        glver_major,
-        glver_minor,
-        &legacy_bit,
-        win32_display->hasWglARBCreateContext);
+    hglrc = _create_gl_context(context_win32->gl_hdc, share, flags, glver_major, glver_minor, &legacy_bit, win32_display->hasWglARBCreateContext);
 
-
-    if (hglrc == NULL)
-    {
-        g_set_error_literal(error, GDK_GL_ERROR,
-            GDK_GL_ERROR_NOT_AVAILABLE, "Unable to create a GL context");
+    if (hglrc == NULL) {
+        g_set_error_literal(error, GDK_GL_ERROR, GDK_GL_ERROR_NOT_AVAILABLE, "Unable to create a GL context");
         return FALSE;
     }
 
@@ -1720,19 +1645,17 @@ _gdk_win32_gl_context_realize(GdkGLContext* context, GError** error) {
     /* if this is the first time a GL context is acquired for the window,
      * disable layered windows by triggering update_style_bits()
      */
-    if (impl->suppress_layered == 1)
-        _gdk_win32_window_update_style_bits(window);
+    if (impl->suppress_layered == 1) _gdk_win32_window_update_style_bits(window);
 
     /* Ensure that any other context is created with a legacy bit set */
     gdk_gl_context_set_is_legacy(context, legacy_bit);
-
     return TRUE;
 }
 
 void override_win32_gl_context_realize() {
     GType glc_type = gdk_win32_gl_context_get_type();
     _GdkGLContextClass* klass = (_GdkGLContextClass*)g_type_class_ref(glc_type);
-    klass->realize = _gdk_win32_gl_context_realize;
+    klass->realize = vr_gdk_win32_gl_context_realize;
     g_type_class_unref(klass);
 }
 
@@ -1744,42 +1667,77 @@ gdk_gl_context_has_framebuffer_blit(GdkGLContext* context)
     return priv->has_gl_framebuffer_blit;
 }
 
-void _gdk_win32_window_invalidate_for_new_frame(_GdkWindow* window, cairo_region_t* update_area) {
-    cairo_rectangle_int_t window_rect;
-    gboolean invalidate_all = TRUE;
-    _GdkWin32GLContext* context_win32;
-    cairo_rectangle_int_t whole_window = { 0, 0, gdk_window_get_width(window), gdk_window_get_height(window) };
-
-    //printf("invalidate_for_new_frame win: %d %d %d %d\n", 0, 0, gdk_window_get_width(window), gdk_window_get_height(window));
-    //printf("invalidate_for_new_frame %d %d %d %d\n", update_area->);
-    //cairo_region_get_rectangle()
-
-
-    /* Minimal update is ok if we're not drawing with gl */
-    if (window->gl_paint_context == NULL) return;
-
-    //static gboolean once = FALSE;
-    //if (once) return; once = TRUE;
-
-    context_win32 = GDK_WIN32_GL_CONTEXT(window->gl_paint_context);
-    context_win32->do_blit_swap = FALSE;
-
-    //if (gdk_gl_context_has_framebuffer_blit(window->gl_paint_context) && cairo_region_contains_rectangle(update_area, &whole_window) != CAIRO_REGION_OVERLAP_IN) {
-    //    context_win32->do_blit_swap = TRUE;
-    if (cairo_region_contains_rectangle(update_area, &whole_window) != CAIRO_REGION_OVERLAP_IN) {
-        invalidate_all = FALSE;
-    } else invalidate_all = TRUE;
-
-    if (invalidate_all || global_invalidate) {
-        printf("invalidate_for_new_frame %i %i\n", invalidate_all, global_invalidate);
-        global_invalidate = FALSE;
-        window_rect.x = 0;
-        window_rect.y = 0;
-        window_rect.width = gdk_window_get_width(window);
-        window_rect.height = gdk_window_get_height(window);
-        cairo_region_union_rectangle(update_area, &window_rect);
+void analyseCairoRegion(cairo_region_t* r, cairo_region_overlap_t winOverlap) {
+    int N = cairo_region_num_rectangles(r);
+    printf("analyse cairo region with %i rectangles, window overlap: %i (in, out, part)\n", N, winOverlap);
+    cairo_rectangle_int_t rec;
+    for (int i=0; i<N; i++) {
+        cairo_region_get_rectangle(r, i, &rec);
+        printf(" rectangle %i %i %i %i\n", rec.x, rec.y, rec.width, rec.height);
     }
 }
+
+void _gdk_win32_window_invalidate_for_new_frame(_GdkWindow* window, cairo_region_t* update_area) {
+    if (window->gl_paint_context == NULL) return; // Minimal update is ok if we're not drawing with gl
+
+    _GdkWin32GLContext* context_win32 = GDK_WIN32_GL_CONTEXT(window->gl_paint_context);
+    context_win32->do_blit_swap = FALSE;
+
+    cairo_rectangle_int_t whole_window = { 0, 0, gdk_window_get_width(window), gdk_window_get_height(window) };
+    /*gboolean invalidate_all = FALSE;
+    cairo_region_overlap_t overlap = cairo_region_contains_rectangle(update_area, &whole_window);
+    if (overlap == CAIRO_REGION_OVERLAP_IN) invalidate_all = TRUE;*/
+
+    //analyseCairoRegion(update_area, overlap);
+
+    if (global_invalidate) { // when resizing
+        cairo_region_union_rectangle(update_area, &whole_window);
+        global_invalidate = FALSE;
+    }
+
+    static cairo_rectangle_int_t lastRegion = { 0, 0, 0, 0 }; // to avoid flickering just remeber and update last region too..
+    cairo_rectangle_int_t extends;
+    cairo_region_get_extents(update_area, &extends);
+    cairo_region_union_rectangle(update_area, &lastRegion);
+    lastRegion = extends;
+}
+
+/*static void _gdk_win32_window_set_opacity(_GdkWindow* window, gdouble opacity) {
+    printf(" +-+-+-++-- _gdk_win32_window_set_opacity %d\n", opacity);
+
+    LONG exstyle;
+    typedef BOOL(WINAPI* PFN_SetLayeredWindowAttributes) (HWND, COLORREF, BYTE, DWORD);
+    PFN_SetLayeredWindowAttributes setLayeredWindowAttributes = NULL;
+
+    g_return_if_fail(GDK_IS_WINDOW(window));
+
+    if (!WINDOW_IS_TOPLEVEL(window) || GDK_WINDOW_DESTROYED(window))
+        return;
+
+    if (opacity < 0)
+        opacity = 0;
+    else if (opacity > 1)
+        opacity = 1;
+
+    _GdkWindowImplWin32* impl = (_GdkWindowImplWin32*)window->impl;
+
+    impl->layered_opacity = opacity;
+
+    if (impl->layered) return;
+
+    exstyle = GetWindowLong(gdk_win32_window_get_handle(window), GWL_EXSTYLE);
+
+    if (!(exstyle & WS_EX_LAYERED)) SetWindowLong(gdk_win32_window_get_handle(window), GWL_EXSTYLE, exstyle | WS_EX_LAYERED);
+
+    setLayeredWindowAttributes = (PFN_SetLayeredWindowAttributes)GetProcAddress(GetModuleHandle("user32.dll"), "SetLayeredWindowAttributes");
+
+    if (setLayeredWindowAttributes) {
+        setLayeredWindowAttributes(gdk_win32_window_get_handle(window),
+            0,
+            opacity * 0xff,
+            LWA_ALPHA);
+    }
+}*/
 
 #endif
 
@@ -1787,6 +1745,7 @@ void override_window_invalidate_for_new_frame(_GdkWindow* window) {
     _GdkWindowImplClass* impl_class = getGdkWindowImplClass();
 #ifdef _WIN32
     impl_class->invalidate_for_new_frame = _gdk_win32_window_invalidate_for_new_frame;
+    //impl_class->set_opacity = _gdk_win32_window_set_opacity;
 #else
     impl_class->invalidate_for_new_frame = _gdk_x11_window_invalidate_for_new_frame;
 #endif
@@ -1840,6 +1799,9 @@ static void gl_area_dispose(GObject *gobject) {
 }
 
 #ifndef _WIN32
+gint epoxy_glx_version(Display*, int);
+guint epoxy_has_glx_extension(Display*, int, const char*);
+
 gboolean gdk_x11_screen_init_gl (GdkScreen *screen) {
     GdkDisplay *display = gdk_screen_get_display (screen);
     _GdkX11Display *display_x11 = (_GdkX11Display*)display;
@@ -1873,58 +1835,24 @@ static gboolean find_fbconfig_for_visual (GdkDisplay* display, _GdkVisual* visua
     Display* dpy = display_x11->xdisplay;
     GLXFBConfig *configs;
     int n_configs, i;
-    gboolean use_rgba;
+    //gboolean use_rgba;
     gboolean retval = FALSE;
 
     _GdkX11Visual *visual_x11 = (_GdkX11Visual*)visual;
     VisualID xvisual_id = XVisualIDFromVisual(visual_x11->xvisual);
 
-    if (full) {
-        static int attrsF[] = {
-          GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
-          GLX_RENDER_TYPE     , GLX_RGBA_BIT,
-          GLX_DOUBLEBUFFER    , GL_TRUE,
-          GLX_X_VISUAL_TYPE   , GLX_TRUE_COLOR,
-          GLX_X_RENDERABLE    , GL_TRUE,
-          GLX_RED_SIZE        , 8,
-          GLX_GREEN_SIZE      , 8,
-          GLX_BLUE_SIZE       , 8,
-          GLX_ALPHA_SIZE      , GLX_DONT_CARE,
-          GLX_DEPTH_SIZE      , 24,
-          GLX_STENCIL_SIZE    , 8,
-          GLX_SAMPLE_BUFFERS  , 1,
-          GLX_SAMPLES         , 4,
-          None
-        };
-
-        /*static int attrsF[] = {
-          GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
-          GLX_RENDER_TYPE     , GLX_RGBA_BIT,
-          GLX_DOUBLEBUFFER    , GL_TRUE,
-          GLX_RED_SIZE        , 1,
-          GLX_GREEN_SIZE      , 1,
-          GLX_BLUE_SIZE       , 1,
-          GLX_ALPHA_SIZE      , GLX_DONT_CARE,
-          GLX_DEPTH_SIZE      , 1,
-          None
-        };*/
-
-        configs = glXChooseFBConfig (dpy, DefaultScreen (dpy), attrsF, &n_configs);
-        printf(" creating context with FULL specs, found %i configs\n", n_configs);
-    } else {
-        static int attrs[] = {
-          GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
-          GLX_RENDER_TYPE     , GLX_RGBA_BIT,
-          GLX_DOUBLEBUFFER    , GL_TRUE,
-          GLX_RED_SIZE        , 1,
-          GLX_GREEN_SIZE      , 1,
-          GLX_BLUE_SIZE       , 1,
-          GLX_ALPHA_SIZE      , GLX_DONT_CARE,
-          None
-        };
-        configs = glXChooseFBConfig (dpy, DefaultScreen (dpy), attrs, &n_configs);
-        printf(" creating context with minimum specs, found %i configs\n", n_configs);
-    }
+    static int attrs[] = { // those do not matter as we only want to find the config with ID xvisual_id
+      GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
+      GLX_RENDER_TYPE     , GLX_RGBA_BIT,
+      GLX_DOUBLEBUFFER    , GL_TRUE,
+      GLX_RED_SIZE        , 1,
+      GLX_GREEN_SIZE      , 1,
+      GLX_BLUE_SIZE       , 1,
+      GLX_ALPHA_SIZE      , GLX_DONT_CARE,
+      None
+    };
+    configs = glXChooseFBConfig (dpy, DefaultScreen (dpy), attrs, &n_configs);
+    printf(" creating context with minimum specs, found %i configs\n", n_configs);
 
     if (configs == NULL || n_configs == 0) {
       printf("AAAAAAA, glXChooseFBConfig failed!\n");
@@ -1932,12 +1860,14 @@ static gboolean find_fbconfig_for_visual (GdkDisplay* display, _GdkVisual* visua
       return FALSE;
     }
 
-  for (i = 0; i < n_configs; i++)  {
+    for (i = 0; i < n_configs; i++)  {
       XVisualInfo *visinfo;
 
       visinfo = glXGetVisualFromFBConfig (dpy, configs[i]);
       if (visinfo == NULL) continue;
 
+
+      //printf(" search visualid %i =? %i\n", visinfo->visualid, xvisual_id);
       if (visinfo->visualid != xvisual_id) {
           XFree (visinfo);
           continue;
@@ -1948,18 +1878,14 @@ static gboolean find_fbconfig_for_visual (GdkDisplay* display, _GdkVisual* visua
       XFree (visinfo);
       retval = TRUE;
       goto out;
-  }
+    }
 
-  if (full) {
-      if (fb_config_out != NULL) *fb_config_out = configs[0];
-      retval = TRUE;
-  }
-
-  //g_set_error (error, GDK_GL_ERROR, GDK_GL_ERROR_UNSUPPORTED_FORMAT, "No available configurations for the given RGBA pixel format");
+    printf("Error, find_fbconfig_for_visual failed? tried to find %i\n", xvisual_id);
+    //g_set_error (error, GDK_GL_ERROR, GDK_GL_ERROR_UNSUPPORTED_FORMAT, "No available configurations for the given RGBA pixel format");
 
 out:
-  XFree (configs);
-  return retval;
+    XFree (configs);
+    return retval;
 }
 
 GdkGLContext* x11_window_create_gl_context(GdkWindow* window, gboolean attached, GdkGLContext *share, gboolean full, GError**error) {
@@ -1972,7 +1898,7 @@ GdkGLContext* x11_window_create_gl_context(GdkWindow* window, gboolean attached,
       return NULL;
   }
 
-  _GdkVisual* visual = gdk_window_get_visual (window);
+  _GdkVisual* visual = (_GdkVisual*)gdk_window_get_visual ((GdkWindow*)window);
   if (!find_fbconfig_for_visual (display, visual, &config, full, error)) return NULL;
   printf("visual depth %i\n", visual->depth);
 
@@ -2048,31 +1974,51 @@ static void _destroy_dummy_gl_context(GdkWGLDummy dummy) {
 
 #define PIXEL_ATTRIBUTES 19
 
-static gint _get_wgl_pfd(HDC hdc, const gboolean need_alpha_bits, PIXELFORMATDESCRIPTOR* pfd, _GdkWin32Display* display) {
+static gint vr_get_dummy_wgl_pfd(HDC hdc, PIXELFORMATDESCRIPTOR* pfd) {
+    printf("   get minimal GL Context\n");
+
+    gint best_pf = 0;
+    pfd->nSize = sizeof(PIXELFORMATDESCRIPTOR);
+    pfd->nVersion = 1;
+    pfd->dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+    pfd->iPixelType = PFD_TYPE_RGBA;
+    //pfd->iPixelType = PFD_TYPE_COLORINDEX;
+    pfd->cColorBits = GetDeviceCaps(hdc, BITSPIXEL);
+    pfd->cAlphaBits = 8; // important, if set to 0 the window might get translucent on some systems
+    pfd->dwLayerMask = PFD_MAIN_PLANE;
+    //pfd->dwLayerMask = PFD_OVERLAY_PLANE;
+    best_pf = ChoosePixelFormat(hdc, pfd);
+
+    printf("    chose minimal pixel format: %i\n", best_pf);
+    return best_pf;
+}
+
+static gint vr_get_wgl_pfd(HDC hdc, PIXELFORMATDESCRIPTOR* pfd, _GdkWin32Display* display) {
+    printf("   vr_get_wgl_pfd, get complete GL Context\n");
     gint best_pf = 0;
 
     pfd->nSize = sizeof(PIXELFORMATDESCRIPTOR);
 
-    if (display != NULL && display->hasWglARBPixelFormat) {
+    if (display->hasWglARBPixelFormat) {
         GdkWGLDummy dummy;
         UINT num_formats;
         gint colorbits = GetDeviceCaps(hdc, BITSPIXEL);
-        guint extra_fields = 1;
-        gint i = 0;
-        int alpha_idx = 0;
 
-        if (display->hasWglARBmultisample) {
-            /* 2 pairs of values needed for multisampling/AA support */
-            extra_fields += 2 * 2;
-        }
+        printf("     device colorbits: %i\n", colorbits);
 
-        int pixelAttribs[] = {
+        // acquire and cache dummy Window (HWND & HDC) and dummy GL Context, we need it for wglChoosePixelFormatARB()
+        memset(&dummy, 0, sizeof(GdkWGLDummy));
+        best_pf = _gdk_init_dummy_context(&dummy);
+        if (best_pf == 0 || !wglMakeCurrent(dummy.hdc, dummy.hglrc)) return 0;
+
+        int pixelAttribsFull[] = {
             WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
             WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
             WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
             WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
             WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
             WGL_COLOR_BITS_ARB,         colorbits,
+            WGL_ALPHA_BITS_ARB,         8, // important, if set to 0 the window might get translucent on some systems
             WGL_DEPTH_BITS_ARB,         24,
             WGL_STENCIL_BITS_ARB,       8,
             WGL_SAMPLE_BUFFERS_ARB,     1,
@@ -2080,89 +2026,44 @@ static gint _get_wgl_pfd(HDC hdc, const gboolean need_alpha_bits, PIXELFORMATDES
             0
         };
 
-        /* Update PIXEL_ATTRIBUTES above if any groups are added here! */
-        /* one group contains a value pair for both pixelAttribs and pixelAttribsNoAlpha */
-        /*int pixelAttribs[PIXEL_ATTRIBUTES];
-        pixelAttribs[i] = WGL_DRAW_TO_WINDOW_ARB;
-        pixelAttribs[i++] = GL_TRUE;
+        printf(" --- === --- pixelAttribsFull %i %i\n", colorbits, 0);
 
-        pixelAttribs[i++] = WGL_SUPPORT_OPENGL_ARB;
-        pixelAttribs[i++] = GL_TRUE;
+        int pixelAttribsMin[] = {
+            WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
+            WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
+            WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
+            WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
+            WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
+            WGL_COLOR_BITS_ARB,         colorbits,
+            WGL_ALPHA_BITS_ARB,         8, // important, if set to 0 the window might get translucent on some systems
+            WGL_DEPTH_BITS_ARB,         24,
+            WGL_STENCIL_BITS_ARB,       8,
+            0
+        };
 
-        pixelAttribs[i++] = WGL_DOUBLE_BUFFER_ARB;
-        pixelAttribs[i++] = GL_TRUE;
-
-        pixelAttribs[i++] = WGL_ACCELERATION_ARB;
-        pixelAttribs[i++] = WGL_FULL_ACCELERATION_ARB;
-
-        pixelAttribs[i++] = WGL_PIXEL_TYPE_ARB;
-        pixelAttribs[i++] = WGL_TYPE_RGBA_ARB;
-
-        pixelAttribs[i++] = WGL_COLOR_BITS_ARB;
-        pixelAttribs[i++] = colorbits;
-
-        if (display->hasWglARBmultisample) {
-            printf("   -- yay, multisampling!\n");
-            pixelAttribs[i++] = WGL_SAMPLE_BUFFERS_ARB;
-            pixelAttribs[i++] = 1;
-
-            pixelAttribs[i++] = WGL_SAMPLES_ARB;
-            pixelAttribs[i++] = 8;
+        bool validPF = wglChoosePixelFormatARB(hdc, pixelAttribsFull, NULL, 1, &best_pf, &num_formats);
+        if (!validPF) {
+            printf(" --= WARNING! full pixel attribs failed, trying without multisampling =--\n");
+            validPF = wglChoosePixelFormatARB(hdc, pixelAttribsMin, NULL, 1, &best_pf, &num_formats);
         }
 
-        pixelAttribs[i++] = WGL_ALPHA_BITS_ARB;
-
-        // track the spot where the alpha bits are, so that we can clear it if needed
-        alpha_idx = i;
-
-        pixelAttribs[i++] = 8;
-        pixelAttribs[i++] = 0; */
-
-        memset(&dummy, 0, sizeof(GdkWGLDummy));
-
-        /* acquire and cache dummy Window (HWND & HDC) and
-         * dummy GL Context, we need it for wglChoosePixelFormatARB()
-         */
-        best_pf = _gdk_init_dummy_context(&dummy, need_alpha_bits);
-        if (best_pf == 0 || !wglMakeCurrent(dummy.hdc, dummy.hglrc)) return 0;
-
-        wglChoosePixelFormatARB(hdc, pixelAttribs, NULL, 1, &best_pf, &num_formats);
-
-        /*if (best_pf == 0)  {
-            if (!need_alpha_bits) {
-                pixelAttribs[alpha_idx] = 0;
-                pixelAttribs[alpha_idx + 1] = 0;
-                wglChoosePixelFormatARB(hdc, pixelAttribs, NULL, 1, &best_pf, &num_formats);
-            }
-        }*/
+        if (!validPF) {
+            printf(" --= WARNING! no working pixel attribs, get fallback GL Context! ..good luck! =--\n");
+            best_pf = vr_get_dummy_wgl_pfd(hdc, pfd);
+        }
 
         wglMakeCurrent(NULL, NULL);
         _destroy_dummy_gl_context(dummy);
     } else {
-        pfd->nVersion = 1;
-        pfd->dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
-        pfd->iPixelType = PFD_TYPE_RGBA;
-        pfd->cColorBits = GetDeviceCaps(hdc, BITSPIXEL);
-        pfd->cAlphaBits = 8;
-        pfd->dwLayerMask = PFD_MAIN_PLANE;
-
-        best_pf = ChoosePixelFormat(hdc, pfd);
-
-        if (best_pf == 0)
-            /* give another chance if need_alpha_bits is FALSE,
-             * meaning we prefer to have an alpha channel anyways
-             */
-            if (!need_alpha_bits)
-            {
-                pfd->cAlphaBits = 0;
-                best_pf = ChoosePixelFormat(hdc, pfd);
-            }
+        printf(" --= WARNING! on ARB, get fallback GL Context! ..good luck! =--\n");
+        best_pf = vr_get_dummy_wgl_pfd(hdc, pfd);
     }
 
+    printf("   chose pixel format: %i\n", best_pf);
     return best_pf;
 }
 
-static gint _gdk_init_dummy_context(GdkWGLDummy* dummy, const gboolean  need_alpha_bits) {
+static gint _gdk_init_dummy_context(GdkWGLDummy* dummy) {
     PIXELFORMATDESCRIPTOR pfd;
     gboolean set_pixel_format_result = FALSE;
     gint best_idx = 0;
@@ -2172,7 +2073,7 @@ static gint _gdk_init_dummy_context(GdkWGLDummy* dummy, const gboolean  need_alp
     dummy->hdc = GetDC(dummy->hwnd);
     memset(&pfd, 0, sizeof(PIXELFORMATDESCRIPTOR));
 
-    best_idx = _get_wgl_pfd(dummy->hdc, need_alpha_bits, &pfd, NULL);
+    best_idx = vr_get_dummy_wgl_pfd(dummy->hdc, &pfd);
 
     if (best_idx != 0) set_pixel_format_result = SetPixelFormat(dummy->hdc, best_idx, &pfd);
     if (best_idx == 0 || !set_pixel_format_result) return 0;
@@ -2185,7 +2086,7 @@ static gint _gdk_init_dummy_context(GdkWGLDummy* dummy, const gboolean  need_alp
     return best_idx;
 }
 
-gboolean _gdk_win32_display_init_gl(GdkDisplay* display, const gboolean need_alpha_bits) {
+gboolean _gdk_win32_display_init_gl(GdkDisplay* display) {
     _GdkWin32Display* display_win32 = (_GdkWin32Display*)display;
     gint best_idx = 0;
     GdkWGLDummy dummy;
@@ -2198,7 +2099,7 @@ gboolean _gdk_win32_display_init_gl(GdkDisplay* display, const gboolean need_alp
      * dummy GL Context, it is used to query functions
      * and used for other stuff as well
      */
-    best_idx = _gdk_init_dummy_context(&dummy, need_alpha_bits);
+    best_idx = _gdk_init_dummy_context(&dummy);
 
     if (best_idx == 0 || !wglMakeCurrent(dummy.hdc, dummy.hglrc)) return FALSE;
 
@@ -2223,9 +2124,7 @@ GdkGLContext* win32_window_create_gl_context(GdkWindow* window, gboolean attache
     _GdkWin32GLContext* context = NULL;
     GdkVisual* visual = gdk_window_get_visual(window);
 
-    gboolean need_alpha_bits = (visual == gdk_screen_get_rgba_visual(gdk_display_get_default_screen(display)));
-
-    if (!_gdk_win32_display_init_gl(display, need_alpha_bits)) {
+    if (!_gdk_win32_display_init_gl(display)) {
         g_set_error_literal(error, GDK_GL_ERROR, GDK_GL_ERROR_NOT_AVAILABLE, "No GL implementation is available");
         return NULL;
     }
@@ -2237,7 +2136,6 @@ GdkGLContext* win32_window_create_gl_context(GdkWindow* window, gboolean attache
     display_win32->gl_hwnd = hwnd;
 
     context = g_object_new(GDK_TYPE_WIN32_GL_CONTEXT, "display", display, "window", window, "shared-context", share, NULL);
-    context->need_alpha_bits = need_alpha_bits;
     context->gl_hdc = hdc;
     context->is_attached = attached;
 
@@ -2260,7 +2158,7 @@ GdkGLContext* gdk_window_get_paint_gl_context(_GdkWindow* window, GError** error
 #ifdef _WIN32
       iwindow->gl_paint_context = win32_window_create_gl_context(iwindow, TRUE, NULL, FALSE, &internal_error);
 #else
-      iwindow->gl_paint_context = x11_window_create_gl_context (iwindow, TRUE, NULL, FALSE, &internal_error);
+      iwindow->gl_paint_context = x11_window_create_gl_context ((GdkWindow*)iwindow, TRUE, NULL, FALSE, &internal_error);
 #endif
     }
 
@@ -2297,18 +2195,18 @@ GdkGLContext* _gdk_window_create_gl_context (_GdkWindow* window, GError** error)
 
 static GdkGLContext* gl_area_real_create_context(GLArea *area) {
     printf("gl_area_real_create_context\n");
-    GLAreaPrivate *priv = gl_area_get_instance_private (area);
+    //GLAreaPrivate *priv = gl_area_get_instance_private (area);
     GtkWidget *widget = GTK_WIDGET (area);
     GError *error = NULL;
     GdkGLContext *context;
 
-    override_window_invalidate_for_new_frame(gtk_widget_get_window(widget));
+    override_window_invalidate_for_new_frame((_GdkWindow*)gtk_widget_get_window(widget));
 #ifdef _WIN32
-    //override_win32_gl_context_realize();
+    override_win32_gl_context_realize();
 #endif
 
     //context = gdk_window_create_gl_context (gtk_widget_get_window (widget), &error);
-    context = _gdk_window_create_gl_context (gtk_widget_get_window (widget), &error);
+    context = _gdk_window_create_gl_context((_GdkWindow*)gtk_widget_get_window (widget), &error);
     //_GdkWindow* win = gtk_widget_get_window(widget);
     //context = x11_window_create_gl_context(win->impl_window, TRUE, 0, &error);
     if (error != NULL) {
@@ -2354,7 +2252,7 @@ static void gl_area_realize (GtkWidget *widget) {
     attributes.wclass = GDK_INPUT_ONLY;
     attributes.event_mask = gtk_widget_get_events (widget);
 
-    _GdkWindow* window = gtk_widget_get_window(widget);
+    //_GdkWindow* window = gtk_widget_get_window(widget);
 
     attributes_mask = GDK_WA_X | GDK_WA_Y;
 
@@ -2433,8 +2331,6 @@ static void gl_area_size_allocate(GtkWidget* widget, GtkAllocation *allocation) 
     }
 }
 
-static cairo_user_data_key_t direct_key;
-
 cairo_region_t *
 gdk_cairo_region_from_clip (cairo_t *cr)
 {
@@ -2470,31 +2366,19 @@ gdk_cairo_region_from_clip (cairo_t *cr)
   return region;
 }
 
-void
-gdk_window_get_unscaled_size (_GdkWindow *window,
-                              int *unscaled_width,
-                              int *unscaled_height)
-{
-  _GdkWindowImplClass *impl_class;
-  gint scale;
+void gdk_window_get_unscaled_size (_GdkWindow *window, int *unscaled_width, int *unscaled_height) {
+    g_return_if_fail (GDK_IS_WINDOW (window));
 
-  g_return_if_fail (GDK_IS_WINDOW (window));
-
-  if (window->impl_window == window)
-    {
+    if (window->impl_window == window) {
         //impl_class = GDK_WINDOW_IMPL_GET_CLASS (window->impl);
-        impl_class = getGdkWindowImplClass();
-        impl_class->get_unscaled_size (window, unscaled_width, unscaled_height);
+        _GdkWindowImplClass* impl_class = getGdkWindowImplClass();
+        impl_class->get_unscaled_size((GdkWindow*)window, unscaled_width, unscaled_height);
         return;
     }
 
-  scale = gdk_window_get_scale_factor (window);
-
-  if (unscaled_width)
-    *unscaled_width = window->width * scale;
-
-  if (unscaled_height)
-    *unscaled_height = window->height * scale;
+    gint scale = gdk_window_get_scale_factor((GdkWindow*)window);
+    if (unscaled_width) *unscaled_width = window->width * scale;
+    if (unscaled_height) *unscaled_height = window->height * scale;
 }
 
 
@@ -2540,7 +2424,7 @@ void cairo_draw(cairo_t* cr, GLArea* area, _GdkWindow* window, int scale, int x,
   if (glGetError() != GL_NO_ERROR) printf(" gl error on cairo_draw_begin beg\n");
   GLAreaPrivate* priv = gl_area_get_instance_private (area);
   impl_window = window->impl_window;
-  window_scale = gdk_window_get_scale_factor (impl_window);
+  window_scale = gdk_window_get_scale_factor ((GdkWindow*)impl_window);
   clip_region = gdk_cairo_region_from_clip (cr);
   gdk_gl_context_make_current(priv->context);
   if (glGetError() != GL_NO_ERROR) printf(" gl error on gdk_gl_context_make_current\n");
@@ -2590,12 +2474,12 @@ static gboolean gl_area_draw(GtkWidget* widget, cairo_t* cr) {
     //SET_DEBUG_BREAK_POINT(B,1)
     if (glGetError() != GL_NO_ERROR) printf(" gl error on gl_area_draw beg\n");
 
-    GLArea *area = GL_AREA (widget);
-    gtk_widget_set_double_buffered (widget, FALSE);
+    GLArea *area = GL_AREA(widget);
+    //gtk_widget_set_double_buffered(widget, FALSE);
     GLAreaPrivate *priv = gl_area_get_instance_private (area);
-    gboolean unused;
+    //gboolean unused;
     int w, h, scale;
-    GLenum status;
+    //GLenum status;
 
     if (priv->error != NULL) return FALSE;
     if (priv->context == NULL) return FALSE;
@@ -2608,7 +2492,7 @@ static gboolean gl_area_draw(GtkWidget* widget, cairo_t* cr) {
     scale = gtk_widget_get_scale_factor (widget);
     w = gtk_widget_get_allocated_width (widget) * scale;
     h = gtk_widget_get_allocated_height (widget) * scale;
-    cairo_draw(cr, area, gtk_widget_get_window(widget), scale, 0, 0, w, h);
+    cairo_draw(cr, area, (_GdkWindow*)gtk_widget_get_window(widget), scale, 0, 0, w, h);
 
     return TRUE;
 }
@@ -2732,13 +2616,17 @@ GLClipping gl_area_get_clipping(GLArea* area) {
     return priv->clipping;
 }
 
+#ifndef _WIN32
+int glXSwapIntervalSGI(int);
+#endif
+
 void gl_area_set_vsync(GLArea* area, gboolean b) {
 #ifndef _WIN32
     if (b) {
-        auto res = glXSwapIntervalSGI(1);
+        int res = glXSwapIntervalSGI(1);
         printf(" gl_area_set_vsync %i\n", res);
     } else {
-        auto res = glXSwapIntervalSGI(0);
+        int res = glXSwapIntervalSGI(0);
         printf(" gl_area_set_vsync %i\n", res);
     }
 #endif

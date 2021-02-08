@@ -51,6 +51,7 @@ string loadGeometryDoc =
 "\n\t\topts['pointSize'] = 5"
 "\n\t\topts['lod1'] = [5, 20]"
 "\n\t\topts['lod2'] = [10, 200]"
+"\n\t\topts['xyzNoColor'] = 0"
 ;
 
 PyMethodDef VRSceneGlobals::methods[] = {
@@ -82,6 +83,7 @@ PyMethodDef VRSceneGlobals::methods[] = {
 	{"getFrame", (PyCFunction)VRSceneGlobals::getFrame, METH_NOARGS, "Get current frame number" },
 	{"getScript", (PyCFunction)VRSceneGlobals::getScript, METH_VARARGS, "Get python script by name" },
 	{"importScene", (PyCFunction)VRSceneGlobals::importScene, METH_VARARGS, "Import scene" },
+	{"getActiveCamera", (PyCFunction)VRSceneGlobals::getActiveCamera, METH_NOARGS, "Get active camera" },
 	{"testDWGArcs", (PyCFunction)VRSceneGlobals::testDWGArcs, METH_NOARGS, "A test for DWG arcs tesselation" },
 	{"setWindowTitle", (PyCFunction)VRSceneGlobals::setWindowTitle, METH_VARARGS, "Set window title" },
     {NULL}  /* Sentinel */
@@ -108,6 +110,10 @@ PyObject* VRSceneGlobals::getScript(VRSceneGlobals* self, PyObject* args) {
 
 PyObject* VRSceneGlobals::getFrame(VRSceneGlobals* self) {
     return PyInt_FromLong(VRGlobals::CURRENT_FRAME);
+}
+
+PyObject* VRSceneGlobals::getActiveCamera(VRSceneGlobals* self) {
+    return VRPyTypeCaster::cast( VRScene::getCurrent()->getActiveCamera() );
 }
 
 PyObject* VRSceneGlobals::testDWGArcs(VRSceneGlobals* self) {

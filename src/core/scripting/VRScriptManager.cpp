@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <memory>
 
+#define TEMPLATE(core) #core
+
 OSG_BEGIN_NAMESPACE;
 using namespace std;
 
@@ -408,6 +410,139 @@ void VRScriptManager::triggerOnImport() { // deprecated
             //script.second->queueExecution(); // not working??
         }
     }
+}
+
+string hudSite = TEMPLATE(
+<!DOCTYPE html>\n
+<html>\n\n
+
+<head>\n
+\t<style type="text/css">\n
+\t\tbutton {\n
+\t\t\tfont-size:20vh;\n
+\t\t\twidth:60vw;\n
+\t\t\theight:60vh;\n
+\t\t}\n
+\t</style>\n
+\t<script>\n
+\t\tvar websocket = new WebSocket('ws://localhost:5500');\n
+\t\twebsocket.onopen = function() { send('register|hud'); };\n
+\t\twebsocket.onerror = function(e) {};\n
+\t\twebsocket.onmessage = function(m) { if(m.data) handle(m.data); };\n
+\t\twebsocket.onclose = function(e) {};\n\n
+
+\t\tfunction send(m) { websocket.send(m); };\n
+\t\tfunction handle(m) { console.log(m); };\n
+\t</script>\n
+</head>\n\n
+
+<body>\n
+\t<button onclick="send('message from hud')">send message</button>\n
+</body>\n
+</html>
+);
+
+string hudInit = TEMPLATE(
+\timport VR\n\n
+\tdef addHud(site,w,h,x,y,parent):\n
+\t\ts = VR.Sprite('site')\n
+\t\ts.setSize(w,h)\n
+\t\ts.webOpen('http://localhost:5500/'+site, 400, w/h)\n
+\t\ts.setFrom([x,y,-2])\n
+\t\tparent.addChild(s)\n\n
+\tif hasattr(VR, 'hud'): VR.hud.destroy()\n
+\tVR.hud = VR.Object('hud')\n
+\tVR.find('Default').addChild(VR.hud)\n\n
+\taddHud( 'hudSite', 0.5,0.5, 0,1, VR.hud )\n
+);
+
+string hudHandler = TEMPLATE(
+\timport VR\n\n
+\tm = dev.getMessage()\n
+\tprint m\n
+);
+
+string restClient = TEMPLATE(
+\timport VR\n\n
+\tif not hasattr(VR, 'client'): VR.client = VR.RestClient()\n\n
+\tdef cb(r):\n
+\t\tprint 'async: ' + r.getData()\n\n
+\tVR.client.getAsync("http://reqbin.com/echo/get/json", cb)\n\n
+\tres = VR.client.get("http://reqbin.com/echo/get/json")\n
+\tprint 'sync: ' + res.getData()\n
+);
+
+struct VRScriptTemplate {
+    string name;
+    string type;
+    string core;
+    vector<VRScript::trig> trigs;
+    vector<VRScript::arg>  args;
+};
+
+void VRScriptManager::importTemplate(string n) {
+    if (!templates.count(n)) return;
+    auto& t = templates[n];
+    VRScriptPtr script = VRScript::create(t.name);
+    if (t.type == "shaders") script->setType("GLSL");
+    if (t.type == "websites") script->setType("HTML");
+
+    for (auto& tr : t.trigs) {
+        auto tri = script->addTrigger();
+        tri->trigger = tr.trigger;
+        tri->param = tr.param;
+        tri->dev = tr.dev;
+        tri->key = tr.key;
+        tri->state = tr.state;
+    }
+    script->updateDeviceTrigger();
+
+    script->setCore(t.core);
+    addScript( script );
+}
+
+void VRScriptManager::initTemplates() {
+    auto addTemplate = [&](string type, string name, string core) {
+        VRScriptTemplate s;
+        s.name = name;
+        s.type = type;
+        s.core = core;
+        templates[name] = s;
+    };
+
+    auto addTrigger = [&](string name, string t, string p = "", string d = "none", int k = 0, string s = "Pressed") {
+        VRScript::trig tr;
+        tr.trigger = t;
+        tr.param = p;
+        tr.dev = d;
+        tr.key = k;
+        tr.state = s;
+        templates[name].trigs.push_back(tr);
+    };
+
+    if (templates.size() == 0) {
+        addTemplate("scripts", "onClick", "\timport VR\n\n\tif dev.intersect():\n\t\ti = dev.getIntersected()\n\t\tp = dev.getIntersection()\n\t\tprint i.getName(), p");
+        addTrigger("onClick", "on_device", "0", "mouse");
+        addTemplate("scripts", "hudInit", hudInit);
+        addTemplate("scripts", "hudHandler", hudHandler);
+        addTrigger("hudHandler", "on_device", "0", "server1", -1, "Released");
+        addTemplate("websites", "hudSite", hudSite);
+        addTemplate("shaders", "test", "TODO");
+        addTemplate("scripts", "restClient", restClient);
+    }
+}
+
+map<string, vector<string>> VRScriptManager::getTemplates() {
+    initTemplates();
+    map<string, vector<string>> res;
+    for (auto& t : templates) res[t.second.type].push_back(t.first);
+    return res;
+}
+
+string VRScriptManager::getTemplateCore(string t) {
+    initTemplates();
+    if (!templates.count(t)) return "";
+    return templates[t].core;
 }
 
 OSG_END_NAMESPACE

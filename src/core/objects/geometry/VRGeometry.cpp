@@ -37,6 +37,8 @@
 #include <OpenSG/OSGIntersectAction.h>
 #include <OpenSG/OSGLineIterator.h>
 #include <OpenSG/OSGSimpleAttachment.h>
+#include <OpenSG/OSGGroup.h>
+#include <OpenSG/OSGTransform.h>
 
 template<> string typeName(const OSG::VRGeometry& t) { return "Geometry"; }
 
@@ -157,6 +159,36 @@ class geoIntersectionProxy : public Geometry {
         }
 };
 
+class groupIntersectionProxy : public Group {
+    public:
+        Action::ResultE intersectEnter(Action* action) {
+            auto ia = dynamic_cast<VRIntersectAction*>(action);
+            if (ia->skipVolume()) return Action::Continue;
+            return Group::intersectEnter(action);
+        }
+};
+
+class transIntersectionProxy : public Transform {
+    public:
+        Action::ResultE intersectEnter(Action* action) {
+            auto ia = dynamic_cast<VRIntersectAction*>(action);
+            if (ia->skipVolume()) { // use code from Transform::intersectAction
+                IntersectAction *ia = dynamic_cast<IntersectAction *>(action);
+                Matrix m  = this->getMatrix();
+                m.invert();
+                Pnt3f pos;
+                Vec3f dir;
+                m.multFull(ia->getLine().getPosition (), pos);
+                m.mult    (ia->getLine().getDirection(), dir);
+                Real32 length = dir.length();
+                ia->setLine(Line(pos, dir), ia->getMaxDist());
+                ia->scale(length);
+                return Action::Continue;
+            }
+            return Transform::intersectEnter(action);
+        }
+};
+
 bool VRGeometry::applyIntersectionAction(Action* action) {
     if (!mesh || !mesh->geo) return false;
     auto proxy = (geoIntersectionProxy*)mesh->geo.get();
@@ -175,6 +207,8 @@ VRGeometry::VRGeometry(string name) : VRTransform(name) {
     regStorageSetupFkt( VRStorageCb::create("geometry_update", bind(&VRGeometry::setup, this, _1)) );
 
     // override intersect action callbacks for geometry
+    IntersectAction::registerEnterDefault( Group::getClassType(), reinterpret_cast<Action::Callback>(&groupIntersectionProxy::intersectEnter));
+    IntersectAction::registerEnterDefault( Transform::getClassType(), reinterpret_cast<Action::Callback>(&transIntersectionProxy::intersectEnter));
     IntersectAction::registerEnterDefault( Geometry::getClassType(), reinterpret_cast<Action::Callback>(&geoIntersectionProxy::intersectEnter));
 }
 
@@ -1310,7 +1344,7 @@ VRPointCloudPtr VRGeometry::convertToPointCloud(map<string, string> options) {
         sort(edges.begin(), edges.end(), [] (Edge left, Edge right) -> bool {return left.length < right.length;});
         if (edges[0].pnts.size() == 0) continue;
 
-        float area = edges[0].length * edges[1].length / 2;
+        //float area = edges[0].length * edges[1].length / 2;
         auto mappedPoints = mapPoints(edges[0].pnts, edges[2].pnts);
         for (auto& match : mappedPoints) addPointsOnEdge(data, resolution, get<0>(match), get<1>(match), false);
     }

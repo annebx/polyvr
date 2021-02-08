@@ -69,7 +69,6 @@ void VRGuiFile::init() {
         gtk_box_pack_start(GTK_BOX(dialog_vbox), pathEntry, false, true, 0);
         gtk_box_pack_start(GTK_BOX(dialog_vbox), fileEntry, false, true, 0);
         gtk_box_pack_start(GTK_BOX(dialog_vbox), scrolledWindow, true, true, 0);
-        connect_signal<void>(pathEntry, bind(VRGuiFile::on_edit_path_entry, (_GtkEntry*)pathEntry), "activate");
 
         auto c = gtk_tree_view_column_new();
         auto r = gtk_cell_renderer_text_new();
@@ -84,8 +83,12 @@ void VRGuiFile::init() {
         dialog = gtk_file_chooser_dialog_new("Open File", GTK_WINDOW(window1), GTK_FILE_CHOOSER_ACTION_SAVE, "Cancel", 0, "Open", 0, 0);
         auto dialog_action_area1 = gtk_dialog_get_action_area(GTK_DIALOG(dialog));
         auto buttons = gtk_container_get_children(GTK_CONTAINER(dialog_action_area1));
-        button3 = GTK_WIDGET(g_list_nth_data(buttons, 0));
-        button9 = GTK_WIDGET(g_list_nth_data(buttons, 1));
+        if (!buttons) {
+            auto header = gtk_dialog_get_header_bar(GTK_DIALOG(dialog));
+            buttons = gtk_container_get_children(GTK_CONTAINER(header));
+        }
+        button3 = GTK_WIDGET(g_list_nth_data(buttons, 1));
+        button9 = GTK_WIDGET(g_list_nth_data(buttons, 2));
     }
 
     if (!useCustomWidget) {
@@ -96,6 +99,8 @@ void VRGuiFile::init() {
     } else {
         connect_signal<void>(treeview, bind(VRGuiFile::select), "cursor_changed");
         connect_signal<void, GtkTreePath*, GtkTreeViewColumn*>(treeview, bind(VRGuiFile::activate, placeholders::_1, placeholders::_2), "row_activated");
+        connect_signal<void>(pathEntry, bind(VRGuiFile::on_edit_path_entry, (_GtkEntry*)pathEntry), "activate");
+        setEntryCallback(fileEntry, bind(VRGuiFile::on_filename_edited), false, true, true);
     }
 
     connect_signal<void>(button3, bind(&VRGuiFile::close), "clicked");
@@ -150,6 +155,11 @@ void VRGuiFile::on_toggle_cache_override(GtkCheckButton* b) {
 void VRGuiFile::on_edit_path_entry(GtkEntry* e) {
     auto p = gtk_entry_get_text(e);
     gotoPath(p?p:"");
+}
+
+void VRGuiFile::on_filename_edited() {
+    auto p = gtk_entry_get_text(GTK_ENTRY(fileEntry));
+    selection = p?p:"";
 }
 
 void VRGuiFile::on_edit_import_scale(GtkEntry* e) {
@@ -258,6 +268,7 @@ void VRGuiFile::setFile(string file) {
         gtk_file_chooser_set_current_name((GtkFileChooser*)dialog, file.c_str());
     } else {
         gtk_entry_set_text(GTK_ENTRY(fileEntry), file.c_str());
+        selection = file;
     }
 }
 

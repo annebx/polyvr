@@ -213,6 +213,36 @@ Vec3d VRPlanet::fromLatLongPosition(double north, double east, bool local) {
     return Vec3d( pos );
 }
 
+PosePtr VRPlanet::fromLatLongElevationPose(double north, double east, double elevation, bool local, bool sectorLocal){
+    auto sector = getSector(north, east);
+    if (!sector && ( local || sectorLocal) ) return Pose::create();
+
+    auto poseG = fromLatLongPose(north, east);
+
+    auto sectorCoords = sector->getPlanetCoords();
+
+    auto newPos = poseG->pos() + poseG->up()*elevation;
+    Vec3d f = newPos;
+    Vec3d d = poseG->dir();
+    Vec3d up = poseG->up();
+    PosePtr newPose = Pose::create(f,d,up); //global pose
+
+    if (local) {
+        auto poseOrigin = origin->getPose()->multRight(newPose); //localized with transformed planed origin
+        newPose = poseOrigin;
+    }
+
+    if (sectorLocal) {
+        auto newP = sector->getPose();
+        auto newPinv = newP;
+        newPinv->invert();
+        auto localinSector = newPinv->multRight(newPose); //localized on sector
+        newPose = localinSector;
+    }
+
+    return newPose;
+}
+
 Vec3d VRPlanet::fromLatLongEast(double north, double east, bool local) { return fromLatLongNormal(0, east+90, local); }
 Vec3d VRPlanet::fromLatLongNorth(double north, double east, bool local) { return fromLatLongNormal(north+90, east, local); }
 
@@ -386,7 +416,7 @@ void VRPlanet::remPin(int ID) {}// metaGeo->remove(ID); } // TODO
 // shader --------------------------
 
 string VRPlanet::surfaceVP =
-"#version 120\n"
+"#version 130\n"
 GLSL(
 varying vec3 tcs;
 varying vec3 normal;
@@ -434,7 +464,9 @@ void applyLightning() {
 	vec4  diffuse = gl_LightSource[0].diffuse * NdotL * color;
 	float NdotHV = max(dot(n, normalize(gl_LightSource[0].halfVector.xyz)),0.0);
 	vec4  specular = gl_LightSource[0].specular * pow( NdotHV, gl_FrontMaterial.shininess );
-	gl_FragColor = diffuse + ambient;// + specular;
+    vec4 c = diffuse + ambient;
+    c[3] = 1.0;
+    gl_FragColor = c;// diffuse + ambient;// + specular;
 	//gl_FragColor = ambient + diffuse + specular;
 	//gl_FragColor = vec4(gl_LightSource[0].position.xyz,1);
 }
@@ -449,7 +481,7 @@ void main( void ) {
 	vec4 c2 = texture2D(tex, vec2(u2,v));
 	float s = clamp( (tcs.x+1)*0.3, 0, 1 );
 	color = mix(c2, c1, u0);
-	if (isLit != 0) applyLightning();
+    if (isLit != 0) applyLightning();
 	else gl_FragColor = color;
 }
 );

@@ -17,6 +17,9 @@ class VRAnnotationEngine : public VRGeometry {
         float oradius = 3;
         float size = 0.2;
 
+        bool doBillboard = false;
+        bool doScreensize = false;
+
         Vec3d orientationUp;
         Vec3d orientationDir;
 
@@ -33,8 +36,13 @@ class VRAnnotationEngine : public VRGeometry {
         map<string, int> characterIDs;
 
         struct Label {
+            int ID = -1;
+            int Ngraphemes = -1;
             Vec3d pos;
             vector<int> entries;
+            string str;
+
+            Label(int id);
         };
 
         vector<Label> labels;
@@ -55,6 +63,7 @@ class VRAnnotationEngine : public VRGeometry {
 
         void clear();
         void set(int i, Vec3d p, string s);
+        void setLine(int i, Vec3d p, string s, bool ascii = false);
         int add(Vec3d p, string s);
 
         void setSize(float f);
@@ -64,6 +73,10 @@ class VRAnnotationEngine : public VRGeometry {
         void setBillboard(bool b);
         void setScreensize(bool b);
         void setOrientation(Vec3d d, Vec3d u);
+
+        string getLabel(int i);
+
+        virtual bool applyIntersectionAction(Action* ia);
 };
 
 OSG_END_NAMESPACE;

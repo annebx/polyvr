@@ -164,17 +164,19 @@ GtkWidget* addToolbar(string ID, GtkIconSize iSize, GtkOrientation o) {
     return p;
 }
 
-GtkToolItem* addToolButton(string ID, string stock, GtkWidget* bar) {
+GtkToolItem* addToolButton(string ID, string stock, GtkWidget* bar, string tooltip) {
     auto item = gtk_tool_button_new_from_stock(stock.c_str());
     VRGuiBuilder::get()->reg_widget(GTK_WIDGET(item), ID);
     gtk_toolbar_insert(GTK_TOOLBAR(bar), item, -1);
+    gtk_widget_set_tooltip_text(GTK_WIDGET(item), tooltip.c_str());
     return item;
 }
 
-GtkToolItem* addToggleToolButton(string ID, string stock, GtkWidget* bar) {
+GtkToolItem* addToggleToolButton(string ID, string stock, GtkWidget* bar, string tooltip) {
     auto item = gtk_toggle_tool_button_new_from_stock(stock.c_str());
     VRGuiBuilder::get()->reg_widget(GTK_WIDGET(item), ID);
     gtk_toolbar_insert(GTK_TOOLBAR(bar), item, -1);
+    gtk_widget_set_tooltip_text(GTK_WIDGET(item), tooltip.c_str());
     return item;
 }
 
@@ -479,15 +481,16 @@ void VRGuiBuilder::buildBaseUI() {
     gtk_widget_set_hexpand(label13, true);
     gtk_widget_set_hexpand(label24, true);
 
-    auto toolbutton1 = addToolButton("toolbutton1", "gtk-new", toolbar1);
-    auto toolbutton21 = addToolButton("toolbutton21", "gtk-open", toolbar1);
-    auto toolbutton4 = addToolButton("toolbutton4", "gtk-save", toolbar1);
-    auto toolbutton5 = addToolButton("toolbutton5", "gtk-save-as", toolbar1);
-    auto toolbutton50 = addToolButton("toolbutton50", "gtk-go-up", toolbar1);
-    auto toolbutton28 = addToolButton("toolbutton28", "gtk-stop", toolbar1);
-    auto toolbutton3 = addToolButton("toolbutton3", "gtk-quit", toolbar1);
-    auto toolbutton17 = addToolButton("toolbutton17", "gtk-about", toolbar1);
-    auto toolbutton18 = addToolButton("toolbutton18", "gtk-paste", toolbar1);
+    auto toolbutton1 = addToolButton("toolbutton1", "gtk-new", toolbar1, "New Scene");
+    auto toolbutton21 = addToolButton("toolbutton21", "gtk-open", toolbar1, "Open Scene or Model");
+    auto toolbutton4 = addToolButton("toolbutton4", "gtk-save", toolbar1, "Save Scene");
+    auto toolbutton5 = addToolButton("toolbutton5", "gtk-save-as", toolbar1, "Save Scene as New File");
+    auto toolbutton50 = addToolButton("toolbutton50", "gtk-go-up", toolbar1, "Deploy");
+    auto toolbutton28 = addToolButton("toolbutton28", "gtk-stop", toolbar1, "Close Scene");
+    auto toolbutton3 = addToolButton("toolbutton3", "gtk-quit", toolbar1, "Quit PolyVR");
+    auto toolbutton17 = addToolButton("toolbutton17", "gtk-about", toolbar1, "About");
+    auto toolbutton18 = addToolButton("toolbutton18", "gtk-paste", toolbar1, "Profiler");
+    auto toolbutton26 = addToolButton("toolbutton26", "gtk-fullscreen", toolbar1, "Fullscreen");
 
     cout << " build core section" << endl;
     /* ---------- core section ---------------------- */
@@ -530,13 +533,13 @@ void VRGuiBuilder::buildBaseUI() {
     gtk_box_pack_start(GTK_BOX(hbox1), hseparator6, false, true, 0);
     gtk_box_pack_start(GTK_BOX(hbox1), toolbar6, false, true, 0);
 
-    auto togglebutton1 = addToggleToolButton("togglebutton1", "gtk-leave-fullscreen", toolbar6);
+    auto togglebutton1 = addToggleToolButton("togglebutton1", "gtk-leave-fullscreen", toolbar6, "Undock 3D View");
 
     auto toolbar7 = addToolbar("toolbar7", GTK_ICON_SIZE_LARGE_TOOLBAR, GTK_ORIENTATION_VERTICAL);
-    auto toolbutton24 = addToolButton("toolbutton24", "gtk-clear", toolbar7);
-    auto toolbutton25 = addToolButton("toolbutton25", "gtk-go-down", toolbar7);
-    auto network_verbose = addToggleToolButton("network_verbose", "gtk-network", toolbar7);
-    auto pause_terminal = addToggleToolButton("pause_terminal", "gtk-media-pause", toolbar7);
+    auto toolbutton24 = addToolButton("toolbutton24", "gtk-clear", toolbar7, "Clear Consoles");
+    auto toolbutton25 = addToolButton("toolbutton25", "gtk-go-down", toolbar7, "Go to Bottom");
+    auto network_verbose = addToggleToolButton("network_verbose", "gtk-network", toolbar7, "Show Network Logs");
+    auto pause_terminal = addToggleToolButton("pause_terminal", "gtk-media-pause", toolbar7, "Pause Console Printing");
     gtk_box_pack_end(GTK_BOX(hbox15), toolbar7, false, true, 0);
 
     /* ---------- left core section ---------------------- */
@@ -643,22 +646,6 @@ void VRGuiBuilder::buildBaseUI() {
     gtk_about_dialog_set_logo(aboutdialog1, logo);
     gtk_window_set_transient_for(GTK_WINDOW(aboutdialog1), GTK_WINDOW(window1));
 
-// TODO: fix GSettings schema under windows!
-    /* ---------- file open dialog ---------------------- */
-/*#ifndef _WIN32
-    cout << " build file open dialog" << endl;
-    auto file_dialog = GTK_FILE_CHOOSER_DIALOG(gtk_file_chooser_dialog_new("Open File", GTK_WINDOW(window1), GTK_FILE_CHOOSER_ACTION_SAVE, "Cancel", 0, "Open", 0, 0));
-    auto dialog_action_area1 = gtk_dialog_get_action_area(GTK_DIALOG(file_dialog));
-    auto buttons = gtk_container_get_children(GTK_CONTAINER(dialog_action_area1));
-    auto button3 = g_list_nth_data(buttons, 0);
-    auto button9 = g_list_nth_data(buttons, 1);
-    reg_widget(GTK_WIDGET(file_dialog), "file_dialog");
-    reg_widget(GTK_WIDGET(button3), "button3");
-    reg_widget(GTK_WIDGET(button9), "button9");
-#endif
-    auto fileOpenPresets = gtk_list_store_new(1, G_TYPE_STRING);
-    reg_object(G_OBJECT(fileOpenPresets), "fileOpenPresets");*/
-
     cout << " build internal monitor dialog" << endl;
     /* ---------- internal monitor ---------------------- */
     auto dialog2 = addDialog("dialog2");
@@ -733,10 +720,10 @@ void VRGuiBuilder::buildBaseUI() {
     gtk_grid_attach(GTK_GRID(table6), treeview2_and_frame.second, 0,2,1,1);
     gtk_grid_attach(GTK_GRID(table6), scrolledwindow6, 1,2,1,1);
 
-    auto toolbutton10 = addToolButton("toolbutton10", "gtk-new", toolbar4);
-    auto toolbutton11 = addToolButton("toolbutton11", "gtk-delete", toolbar4);
-    auto toolbutton12 = addToolButton("toolbutton12", "gtk-save", toolbar4);
-    auto toolbutton19 = addToggleToolButton("toolbutton19", "gtk-orientation-portrait", toolbar4);
+    auto toolbutton10 = addToolButton("toolbutton10", "gtk-new", toolbar4, "New Setup");
+    auto toolbutton11 = addToolButton("toolbutton11", "gtk-delete", toolbar4, "Remove Component");
+    auto toolbutton12 = addToolButton("toolbutton12", "gtk-save", toolbar4, "Save Setup");
+    auto toolbutton19 = addToggleToolButton("toolbutton19", "gtk-orientation-portrait", toolbar4, "Mono Mode");
 
     GtkTreeViewColumn* treeviewcolumn2 = gtk_tree_view_column_new();
     gtk_tree_view_column_set_title(treeviewcolumn2, "Setup");
@@ -841,7 +828,7 @@ void VRGuiBuilder::buildBaseUI() {
     auto entry33 = addEntry("entry33");
     auto label39 = addLabel("label39", "Ny:");
     auto entry34 = addEntry("entry34");
-    auto serverlist = gtk_tree_store_new(3, G_TYPE_INT, G_TYPE_INT, G_TYPE_STRING);
+    auto serverlist = gtk_list_store_new(3, G_TYPE_INT, G_TYPE_INT, G_TYPE_STRING);
     auto treeview1_and_frame = addTreeview("treeview1", "serverlist", GTK_TREE_MODEL(serverlist));
     auto treeview1 = treeview1_and_frame.first;
     auto fixed8 = addFixed("fixed8");
@@ -1177,16 +1164,17 @@ void VRGuiBuilder::buildBaseUI() {
     gtk_grid_attach(GTK_GRID(table14), treeview5_and_frame.second, 0,1,1,1);
     gtk_grid_attach(GTK_GRID(table14), table15, 1,1,1,1);
 
-    auto toolbutton6 = addToolButton("toolbutton6", "gtk-new", toolbar3);
-    auto toolbutton20 = addToolButton("toolbutton20", "gtk-indent", toolbar3);
-    auto toolbutton22 = addToolButton("toolbutton22", "gtk-open", toolbar3);
-    auto toolbutton9 = addToolButton("toolbutton9", "gtk-delete", toolbar3);
-    auto toolbutton7 = addToolButton("toolbutton7", "gtk-save", toolbar3);
-    auto toolbutton8 = addToolButton("toolbutton8", "gtk-execute", toolbar3);
-    auto toolbutton23 = addToolButton("toolbutton23", "gtk-find", toolbar3);
-    auto toolbutton16 = addToolButton("toolbutton16", "gtk-help", toolbar3);
-    auto toggletoolbutton1 = addToggleToolButton("toggletoolbutton1", "gtk-sort-ascending", toolbar3);
-    auto toggletoolbutton2 = addToggleToolButton("toggletoolbutton2", "gtk-media-pause", toolbar3);
+    auto toolbutton6 = addToolButton("toolbutton6", "gtk-new", toolbar3, "New Script");
+    auto toolbutton29 = addToolButton("toolbutton29", "gtk-paste", toolbar3, "Script Templates");
+    auto toolbutton20 = addToolButton("toolbutton20", "gtk-indent", toolbar3, "New Group");
+    auto toolbutton22 = addToolButton("toolbutton22", "gtk-open", toolbar3, "Import Script From Scene");
+    auto toolbutton9 = addToolButton("toolbutton9", "gtk-delete", toolbar3, "Delete Script");
+    auto toolbutton7 = addToolButton("toolbutton7", "gtk-save", toolbar3, "Save Script");
+    auto toolbutton8 = addToolButton("toolbutton8", "gtk-execute", toolbar3, "Execute Script");
+    auto toolbutton23 = addToolButton("toolbutton23", "gtk-find", toolbar3, "Search");
+    auto toolbutton16 = addToolButton("toolbutton16", "gtk-help", toolbar3, "Documentation");
+    auto toggletoolbutton1 = addToggleToolButton("toggletoolbutton1", "gtk-sort-ascending", toolbar3, "Show Performance");
+    auto toggletoolbutton2 = addToggleToolButton("toggletoolbutton2", "gtk-media-pause", toolbar3, "Pause Script Execution");
 
     GtkTreeViewColumn* treeviewcolumn14 = gtk_tree_view_column_new();
     gtk_tree_view_column_set_title(treeviewcolumn14, "Script");
@@ -1278,34 +1266,67 @@ void VRGuiBuilder::buildBaseUI() {
     auto arg_types = gtk_list_store_new(1, G_TYPE_STRING);
     VRGuiBuilder::reg_object(G_OBJECT(arg_types), "arg_types");
 
+    /* ---------- Script templates ---------------------- */
+    auto templates_docs = addDialog("scriptTemplates");
+    auto tdialog_vbox = gtk_dialog_get_content_area(GTK_DIALOG(templates_docs));
+    auto tdialog_area = gtk_dialog_get_action_area(GTK_DIALOG(templates_docs));
+    auto tbutton1 = addButton("tbutton1", "Close");
+    auto tbutton2 = addButton("tbutton2", "Import");
+    auto tlabel1 = addLabel("tlabel1", "PolyVR Script Templates");
+    auto thpaned1 = addPaned("thpaned1", GTK_ORIENTATION_HORIZONTAL);
+    gtk_box_pack_start(GTK_BOX(tdialog_area), tbutton1, false, true, 0);
+    gtk_box_pack_start(GTK_BOX(tdialog_area), tbutton2, false, true, 0);
+    gtk_box_pack_start(GTK_BOX(tdialog_vbox), tlabel1, false, true, 0);
+    gtk_box_pack_start(GTK_BOX(tdialog_vbox), thpaned1, false, true, 0);
+    gtk_window_set_transient_for(GTK_WINDOW(templates_docs), GTK_WINDOW(window1));
+    gtk_widget_set_size_request(templates_docs, 800, 600);
+    gtk_paned_set_position(GTK_PANED(thpaned1), 200);
+
+    auto ttable1 = addGrid("ttable1");
+    auto timage1 = addStockImage("timage1", "gtk-find", GTK_ICON_SIZE_SMALL_TOOLBAR);
+    auto tentry1 = addEntry("tentry1");
+    auto templates = gtk_tree_store_new(1, G_TYPE_STRING);
+    auto ttreeview1_and_frame = addTreeview("ttreeview1", "templates", GTK_TREE_MODEL(templates));
+    auto ttreeview1 = ttreeview1_and_frame.first;
+    auto tscrolledwindow1 = addScrolledWindow("tscrolledwindow1");
+    auto ttextview1 = addTextview("ttextview1", "scripttemplates");
+    gtk_widget_set_hexpand(ttreeview1, true);
+    add1ToPaned(thpaned1, ttable1);
+    gtk_grid_attach(GTK_GRID(ttable1), timage1, 0,0,1,1);
+    gtk_grid_attach(GTK_GRID(ttable1), tentry1, 1,0,1,1);
+    gtk_grid_attach(GTK_GRID(ttable1), ttreeview1_and_frame.second, 0,1,2,1);
+    add2ToPaned(thpaned1, tscrolledwindow1);
+    gtk_container_add(GTK_CONTAINER(tscrolledwindow1), ttextview1);
+
+    addTreeviewTextcolumn(ttreeview1, "Templates", "tcellrenderertext1", 0);
+
     /* ---------- Py Docs ---------------------- */
     auto pybindings_docs = addDialog("pybindings-docs");
     auto dialog_vbox6 = gtk_dialog_get_content_area(GTK_DIALOG(pybindings_docs));
     auto dialog_action_area6 = gtk_dialog_get_action_area(GTK_DIALOG(pybindings_docs));
     auto button16 = addButton("button16", "Close");
     auto label69 = addLabel("label69", "PolyVR Python Bindings");
-    auto hpaned2 = addPaned("hpaned2", GTK_ORIENTATION_HORIZONTAL);
+    auto table40 = addGrid("table40");
     gtk_box_pack_start(GTK_BOX(dialog_action_area6), button16, false, true, 0);
     gtk_box_pack_start(GTK_BOX(dialog_vbox6), label69, false, true, 0);
-    gtk_box_pack_start(GTK_BOX(dialog_vbox6), hpaned2, false, true, 0);
+    gtk_box_pack_start(GTK_BOX(dialog_vbox6), table40, false, true, 0);
     gtk_window_set_transient_for(GTK_WINDOW(pybindings_docs), GTK_WINDOW(window1));
     gtk_widget_set_size_request(pybindings_docs, 800, 600);
-    gtk_paned_set_position(GTK_PANED(hpaned2), 200);
 
-    auto table40 = addGrid("table40");
     auto image49 = addStockImage("image49", "gtk-find", GTK_ICON_SIZE_SMALL_TOOLBAR);
     auto entry25 = addEntry("entry25");
     auto bindings = gtk_tree_store_new(5, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
-    auto treeview3_and_frame = addTreeview("treeview3", "bindings", GTK_TREE_MODEL(bindings));
+    auto treeview3_and_frame = addTreeview("treeview3", "bindings", GTK_TREE_MODEL(bindings), false, true);
     auto treeview3 = treeview3_and_frame.first;
     auto scrolledwindow7 = addScrolledWindow("scrolledwindow7");
     auto textview1 = addTextview("textview1", "pydoc");
     gtk_widget_set_hexpand(treeview3, true);
-    add1ToPaned(hpaned2, table40);
+    gtk_widget_set_hexpand(treeview3_and_frame.second, false);
+    gtk_widget_set_hexpand(scrolledwindow7, true);
     gtk_grid_attach(GTK_GRID(table40), image49, 0,0,1,1);
     gtk_grid_attach(GTK_GRID(table40), entry25, 1,0,1,1);
     gtk_grid_attach(GTK_GRID(table40), treeview3_and_frame.second, 0,1,2,1);
-    add2ToPaned(hpaned2, scrolledwindow7);
+    gtk_grid_attach(GTK_GRID(table40), scrolledwindow7, 2,0,1,2);
     gtk_container_add(GTK_CONTAINER(scrolledwindow7), textview1);
 
     addTreeviewTextcolumn(treeview3, "VR Module", "cellrenderertext1", 0);

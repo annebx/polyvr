@@ -23,7 +23,7 @@ VRGtkWindow::VRGtkWindow(GtkWidget* area, string msaa) {
     widget = area;
     if (gtk_widget_get_realized(widget)) cout << "Warning: glarea is realized!\n";
 
-    int MSAA = toInt(subString(msaa, 1, -1));
+    //int MSAA = toInt(subString(msaa, 1, -1));
     //gl_area_set_samples((GLArea*)widget, MSAA); // TODO: pass the samples somehow
 
     //g_signal_connect(widget, "create-context", (GCallback)onCreateGLContext, NULL);
@@ -92,7 +92,9 @@ bool VRGtkWindow::on_render(GdkGLContext* glcontext) {
     int pID = profiler->regStart("gtk window render");
 
     glEnable(GL_DEPTH_TEST);
+    //glEnable(GL_ALPHA_TEST);
     //glEnable(GL_BLEND);
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_MULTISAMPLE);
 
     glClearColor(0.2, 0.2, 0.2, 1.0);

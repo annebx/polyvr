@@ -440,8 +440,8 @@ void VRGearSegmentation::computeGearParams(int fN) {
         VertexPlane& plane1 = planes[match.first];
         VertexPlane& plane2 = planes[match.second];
 
-        if (plane1.sineFits.size() <= fN) continue;
-        if (plane2.sineFits.size() <= fN) continue;
+        if (plane1.sineFits.size() <= size_t(fN)) continue;
+        if (plane2.sineFits.size() <= size_t(fN)) continue;
         if (plane1.sineFits[fN].sineFitParams.size() == 0) continue;
         if (plane2.sineFits[fN].sineFitParams.size() == 0) continue;
 
@@ -466,25 +466,34 @@ void VRGearSegmentation::computeGearParams(int fN) {
 
 void VRGearSegmentation::analyse(VRObjectPtr o) {
     obj = o;
-
+    cout << "VRGearSegmentation::analyse " << o->getName() << endl;
+    cout << "  computeAxis" << endl;
     computeAxis();          // main orientation of gear, also its rotation axis
+    cout << "  computePolarVertices" << endl;
     computePolarVertices(); // compute gear vertices which include the polar coordinates
+    cout << "  computePlanes" << endl;
     computePlanes();        // compute the different planes the gear is made out of
+    cout << "  groupPlanes" << endl;
     groupPlanes();          // match similar planes to each other
+    cout << "  computeRings" << endl;
     computeRings();         // separate the verices of each plane in rings, vertices with similar radius
+    cout << "  computeContours" << endl;
     computeContours();      // use outer rings to compute the contour of the gear, also resamples the contour
+    cout << "  computeSineApprox" << endl;
     computeSineApprox();    // compute a sine approximation of the contours
+    cout << "  computeGearParams" << endl;
     computeGearParams(fftFreqSel);
+    cout << "   analysis done" << endl;
 }
 
 Vec3d VRGearSegmentation::getAxis() { return axis; }
 PosePtr VRGearSegmentation::getPolarCoords() { return Pose::create(Vec3d(0,0,0), axis, r1); }
-int VRGearSegmentation::getNGears() { return gears.size(); }
-int VRGearSegmentation::getNPlanes() { return planes.size(); }
+size_t VRGearSegmentation::getNGears() { return gears.size(); }
+size_t VRGearSegmentation::getNPlanes() { return planes.size(); }
 
-vector<double> VRGearSegmentation::getGearParams(int i) { return i<gears.size() ? gears[i] : vector<double>(); }
+vector<double> VRGearSegmentation::getGearParams(size_t i) { return i<gears.size() ? gears[i] : vector<double>(); }
 
-VRGeometryPtr VRGearSegmentation::createGear(int i) {
+VRGeometryPtr VRGearSegmentation::createGear(size_t i) {
     auto p = getGearParams(i);
     if (p.size() < 8) return 0;
     auto g = VRGeometry::create("gear");
@@ -494,20 +503,20 @@ VRGeometryPtr VRGearSegmentation::createGear(int i) {
     return g;
 }
 
-double VRGearSegmentation::getPlanePosition(int i) { return planes[i].position; }
-vector<Vec2d> VRGearSegmentation::getPlaneContour(int i) { return planes[i].contour; }
+double VRGearSegmentation::getPlanePosition(size_t i) { return planes[i].position; }
+vector<Vec2d> VRGearSegmentation::getPlaneContour(size_t i) { return planes[i].contour; }
 
-vector<double> VRGearSegmentation::getPlaneSineGuess(int i, int sf) {
+vector<double> VRGearSegmentation::getPlaneSineGuess(size_t i, size_t sf) {
     if (planes[i].sineFits.size() <= sf) return vector<double>();
     return planes[i].sineFits[sf].guess;
 }
 
-vector<double> VRGearSegmentation::getPlaneSineApprox(int i, int sf) {
+vector<double> VRGearSegmentation::getPlaneSineApprox(size_t i, size_t sf) {
     if (planes[i].sineFits.size() <= sf) return vector<double>();
     return planes[i].sineFits[sf].sineFitParams;
 }
 
-vector<Vec2d> VRGearSegmentation::getPlaneVertices(int i) {
+vector<Vec2d> VRGearSegmentation::getPlaneVertices(size_t i) {
     vector<Vec2d> vp;
     for (auto& v : planes[i].vertices) vp.push_back(v.polarCoords);
     return vp;
