@@ -81,6 +81,8 @@ _GtkObject* VRGuiBuilder::get_object(string name) {
 
 GtkWidget* addWindow(string ID, string name) {
     GtkWidget* w = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    cout << "addWindow " << ID << " " << name << endl;
+
     VRGuiBuilder::get()->reg_widget(w, ID);
     gtk_window_set_title(GTK_WINDOW(w), name.c_str());
     return w;
@@ -448,10 +450,13 @@ void VRGuiBuilder::buildMinimalUI() {
     cout << " ..building all widgets done!" << endl;
 }
 
-void VRGuiBuilder::buildBaseUI() {
-    cout << "VRGuiBuilder buildBaseUI.." << endl;
-    auto window1 = addWindow("window1", "PolyVR");
+gboolean on_window_expose(GtkWidget* widget, GdkEventExpose* event) {
+    cout << " --- on_window_expose ---" << endl;
+    return FALSE;
+}
 
+void VRGuiBuilder::buildBaseUI() {
+    auto window1 = addWindow("window1", "PolyVR");
     auto main_frame = addGrid("main_frame");
     gtk_container_add(GTK_CONTAINER(window1), main_frame);
     gtk_window_set_icon_from_file(GTK_WINDOW(window1), "ressources/gui/logo_icon.png", 0);
