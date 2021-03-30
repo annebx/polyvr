@@ -11,8 +11,8 @@ using namespace std;
 
 class Triangulator {
     public:
-        struct GeoData;
-        GeoData* geo = 0;
+        VRGeoDataPtr geo;
+        int num_points = 0;
 
     private:
         vector<VRPolygon> outer_bounds;
@@ -28,6 +28,7 @@ class Triangulator {
 
         void add(VRPolygon p, bool outer = true);
 
+        void append(VRGeoDataPtr data);
         VRGeometryPtr compute();
 };
 

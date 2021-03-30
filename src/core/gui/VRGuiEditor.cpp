@@ -40,9 +40,11 @@ string VRGuiEditor::getCore(int i) {
 }
 
 void VRGuiEditor::focus(int line, int column) {
-    // set focus on editor
-    gtk_widget_grab_focus(editor);
+    grabFocus();
+    setCursor(line, column);
+}
 
+void VRGuiEditor::setCursor(int line, int column) {
     // get iterator at line and column and set cursor to iterator
     GtkTextIter itr;
     GtkTextBuffer* buffer = gtk_text_view_get_buffer((GtkTextView*)editor);
@@ -54,6 +56,15 @@ void VRGuiEditor::focus(int line, int column) {
     gtk_text_iter_set_line_offset(&itr, 0);
     GtkTextMark* mark = gtk_text_buffer_create_mark(buffer, 0, &itr, false);
     gtk_text_view_scroll_to_mark((GtkTextView*)editor, mark, 0.25, false, 0, 0);
+    cout << " VRGuiEditor::setCursor l: " << line << " c: " << column << " m: " << gtk_text_iter_get_line(&itr) << endl;
+}
+
+void VRGuiEditor::getCursor(int& line, int& column) {
+    GtkTextIter itr;
+    GtkTextBuffer* buffer = gtk_text_view_get_buffer((GtkTextView*)editor);
+    gtk_text_buffer_get_iter_at_mark(buffer, &itr, gtk_text_buffer_get_insert(buffer));
+    line = gtk_text_iter_get_line(&itr);
+    column = gtk_text_iter_get_line_offset(&itr);
 }
 
 void VRGuiEditor::printViewerLanguages() {
@@ -70,7 +81,7 @@ void VRGuiEditor::printViewerLanguages() {
 }
 
 bool VRGuiEditor::on_editor_shortkey( GdkEventKey* e ) {
-    cout << "VRGuiEditor::on_editor_shortkey " << e->keyval << endl;
+    //cout << "VRGuiEditor::on_editor_shortkey " << e->keyval << endl;
     if ( !(e->state & GDK_CONTROL_MASK) ) return false;
 
     auto getCurrentLine = [&]() {
@@ -123,11 +134,11 @@ bool VRGuiEditor::on_editor_shortkey( GdkEventKey* e ) {
     };
 
     auto triggerCB = [&](string name) {
-        cout << "VRGuiEditor::on_editor_shortkey trigger " << name << endl;
+        //cout << "VRGuiEditor::on_editor_shortkey trigger " << name << endl;
         if (!keyBindings.count(name)) return;
         if (!keyBindings[name]) return;
         (*keyBindings[name])();
-        cout << " VRGuiEditor::on_editor_shortkey trigger " << name << " done" << endl;
+        //cout << " VRGuiEditor::on_editor_shortkey trigger " << name << " done" << endl;
     };
 
     if (e->keyval == 102) {// f
@@ -189,28 +200,6 @@ void VRGuiEditor::grabFocus() {
 }
 
 void VRGuiEditor::addKeyBinding(string name, VRUpdateCbPtr cb) { keyBindings[name] = cb; }
-
-void VRGuiEditor::setCursor(int line, int column) {
-    // get iterator at line and column and set cursor to iterator
-    GtkTextIter itr;
-    GtkTextBuffer* buffer = gtk_text_view_get_buffer((GtkTextView*)editor);
-    gtk_text_buffer_get_iter_at_line(buffer, &itr, line-1);
-    gtk_text_iter_forward_chars(&itr, max(column-1, 0));
-    gtk_text_buffer_place_cursor(buffer, &itr);
-
-    // scroll to line
-    gtk_text_iter_set_line_offset(&itr, 0);
-    GtkTextMark* mark = gtk_text_buffer_create_mark(buffer, 0, &itr, false);
-    gtk_text_view_scroll_to_mark((GtkTextView*)editor, mark, 0.25, false, 0, 0);
-}
-
-void VRGuiEditor::getCursor(int& line, int& column) {
-    GtkTextIter itr;
-    GtkTextBuffer* buffer = gtk_text_view_get_buffer((GtkTextView*)editor);
-    gtk_text_buffer_get_iter_at_mark(buffer, &itr, gtk_text_buffer_get_insert(buffer));
-    line = gtk_text_iter_get_line(&itr);
-    column = gtk_text_iter_get_line_offset(&itr);
-}
 
 void VRGuiEditor::highlightStrings(string search, string style) {
     auto tag = editorStyles[style];

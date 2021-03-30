@@ -22,6 +22,7 @@ class VRPlanet : public VRTransform {
         map<Vec2i, VRWorldGeneratorPtr> sectors;
         map<string, OSMMapPtr> osmMaps;
         Vec2d originCoords = Vec2d(-1,-1);
+        bool localized = false;
         VRTransformPtr origin;
         VRLodPtr lod;
         VRObjectPtr anchor;
@@ -62,6 +63,7 @@ class VRPlanet : public VRTransform {
         PosePtr fromLatLongElevationPose(double north, double east, double elevation, bool local = false, bool sectorLocal = false );
 
         double getRadius();
+        double getSectorSize();
         Vec2d getSurfaceUV(double north, double east);
         //double getSurfaceHeight(double north, double east);
         PosePtr getSurfacePose(double north, double east, bool local = false, bool sectorLocal = false );
@@ -69,12 +71,14 @@ class VRPlanet : public VRTransform {
         Vec2d fromPosLatLong(Pnt3d p, bool local = false);
 
         void localize(double north, double east);
+        void localizeSector(VRWorldGeneratorPtr s);
 
         VRMaterialPtr getMaterial();
         void setupMaterial(string texture, bool isLit);
         void setLit(bool b);
 
         void divideTIFF(string pathIn, string pathOut, double minLat, double maxLat, double minLon, double maxLon, double res);
+        void divideTIFFEPSG(string pathIn, string pathOut, double minNorthing, double minEasting, double maxNorthing, double maxEasting, double pixelResolution,double chunkResolution, bool debug);
 
         void setRotation(double rDays);
         void setInclination(double I);

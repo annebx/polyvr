@@ -18,7 +18,8 @@
  ******************************************************************************/
 
 #include <iostream>
-#include <opc/ua/client/client.h>
+#include "VROPCUAclient.h"
+//#include <opc/ua/client/client.h>
 
 #include <opc/common/uri_facade.h>
 #include <opc/ua/client/remote_connection.h>
@@ -36,8 +37,21 @@
 
 using namespace std;
 
+#include <signal.h>
+
+
 namespace OpcUa
 {
+
+UaClient* uaclient = 0;
+
+
+extern "C" void my_function_to_handle_aborts(int signal_number)
+{
+    cout << endl << " --------------------- my_function_to_handle_aborts  ----------------------" << endl << endl;
+    if (uaclient) uaclient->Abort();
+}
+
 
 void KeepAliveThread::Start(Services::SharedPtr server, Node node, Duration period)
 {
@@ -50,12 +64,15 @@ void KeepAliveThread::Start(Services::SharedPtr server, Node node, Duration peri
 }
 
 
-void KeepAliveThread::Run()
-{
-  LOG_INFO(Logger, "keep_alive_thread     | starting");
+void KeepAliveThread::Run() {
+    LOG_INFO(Logger, "keep_alive_thread     | starting");
 
     while (!StopRequest) {
         try {
+            /*static int bomb = 0; bomb++;
+            cout << "countdown: " << bomb << endl;
+            if (bomb >= 3) { cout << endl << "    BOOOOOOOOOOM!!!" << endl << endl; break; }*/
+
             int64_t t_sleep = Period * 0.7;
             LOG_DEBUG(Logger, "keep_alive_thread     | sleeping for: {}ms", t_sleep);
 
@@ -81,11 +98,17 @@ void KeepAliveThread::Run()
 
             LOG_DEBUG(Logger, "keep_alive_thread     | read a variable from address space to keep session open");
             NodeToRead.GetValue();
-        } catch(...) { cout << "ARGH, lost OPC connection or what?" << endl; break; }
+        } catch(...) {
+            cout << "ARGH, lost OPC connection in KeepAliveThread" << endl;
+            //break;
+            //Condition.notify_all();
+            //if (uaclient) uaclient->Abort();
+        }
     }
 
     Running = false;
     LOG_INFO(Logger, "keep_alive_thread     | stopped");
+    Condition.notify_all();
 }
 
 void KeepAliveThread::Stop()
@@ -110,14 +133,24 @@ void KeepAliveThread::Stop()
     }
 }
 
+bool KeepAliveThread::isRunning() { return Running; }
+
+
 UaClient::UaClient(bool debug) : KeepAlive(nullptr) {
+    uaclient = this;
     cout << endl << " --------------------- UaClient::UaClient  ----------------------" << endl << endl;
     Logger = spdlog::get("UaClient");
     if (!Logger) Logger = spdlog::stderr_color_mt("UaClient");
     if (debug) Logger->set_level(spdlog::level::debug);
     else Logger->set_level(spdlog::level::info);
     KeepAlive.SetLogger(Logger);
+
+    std::set_terminate([](){ std::cout << "UaClient::UaClient termiante called, buuuh!" << std::endl;
+
+        signal(SIGABRT, &my_function_to_handle_aborts);});
 }
+
+bool UaClient::isRunning() { return KeepAlive.isRunning(); }
 
 std::vector<EndpointDescription> UaClient::GetServerEndpoints(const std::string & endpoint)
 {

@@ -117,14 +117,15 @@ void VREmbankment::createGeometry() {
 }
 
 
-VRTerrain::VRTerrain(string name) : VRGeometry(name) {
+VRTerrain::VRTerrain(string name, bool localized) : VRGeometry(name) {
     hide("SHADOW");
+    localMesh = localized;
 }
 
 VRTerrain::~VRTerrain() {}
 
-VRTerrainPtr VRTerrain::create(string name) {
-    auto t = VRTerrainPtr( new VRTerrain(name) );
+VRTerrainPtr VRTerrain::create(string name, bool localized) {
+    auto t = VRTerrainPtr( new VRTerrain(name, localized) );
     t->setupMat();
     return t;
 }
@@ -183,6 +184,7 @@ void VRTerrain::setMap( VRTexturePtr t, int channel ) {
     mat->setTexture(heigthsTex);
     mat->clearTransparency();
 	mat->setShaderParameter("channel", channel);
+	mat->setShaderParameter("heightoffset", heightoffset);
     mat->setTextureParams(GL_LINEAR_MIPMAP_LINEAR, GL_LINEAR, GL_MODULATE, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE);
     mat->clearTransparency();
     updateTexelSize();
@@ -200,7 +202,10 @@ void VRTerrain::paintHeights(string woods, string gravel) {
 
 void VRTerrain::paintHeights(string path, Color4f mCol, float mAmount) {
     mat->setTexture(path, 0, 3);
-    if (mAmount > 0) mat->getTexture(3)->mixColor(mCol, mAmount);
+    //if (mAmount > 0 )
+    //    if (auto t = mat->getTexture(3)) t->mixColor(mCol, mAmount);
+    mat->setShaderParameter("mixColor", mCol);
+    mat->setShaderParameter("mixAmount", mAmount);
     mat->setShaderParameter("texPic", 3);
     mat->setShaderParameter("doHeightTextures", 2);
     mat->clearTransparency();
@@ -216,6 +221,13 @@ void VRTerrain::updateTexelSize() {
 	mat->setShaderParameter("texelSize", texelSize);
 }
 
+void VRTerrain::curveMesh(VRPlanetPtr p, Vec2d c, PosePtr s) {
+    localMesh = true;
+    planet = p;
+    planetCoords = c;
+    pSectorInv = s;
+}
+
 void VRTerrain::setupGeo() {
     Vec2i gridN = Vec2i(round(size[0]*1.0/grid-0.5), round(size[1]*1.0/grid-0.5));
     if (gridN[0] < 1) gridN[0] = 1;
@@ -229,46 +241,53 @@ void VRTerrain::setupGeo() {
     Vec2d texel = Vec2d( 1.0/texSize[0], 1.0/texSize[1] );
 	Vec2d tcChunk = Vec2d((1.0-texel[0])/gridN[0], (1.0-texel[1])/gridN[1]);
     //cout << toString(gridN) << "-- "  << toString(size) << "-- "  << toString(texel) << "-- "  << toString(tcChunk) << "-- "  << toString(texSize) << endl;
-	//VRGeoData geo;
-	if (localMesh){
+
+	VRGeoData geo;
+    auto pla = planet.lock();
+	if (localMesh && pla) {
         mat->setShaderParameter("local",1);
-        if (meshTer.size()>0){
-            VRGeoData geo;
-            int t1 = 0;
-            int t2 = 0;
+        double sectorSize = pla->getSectorSize();
 
-            //texel = Vec2d( 1.0/(meshTer[0].size()-1), 1.0/(meshTer.size()-1) );
-            tcChunk = Vec2d((1.0-texel[0])/(meshTer[0].size()-1), (1.0-texel[1])/(meshTer.size()-1));
+        int t1 = 0;
+        int t2 = 0;
 
-            //cout << "n,e TEX: " << gridN[1] << " -- " << gridN[0] << endl;
-            //cout << "n,e Mes: " << meshTer.size() << " -- " << meshTer[0].size() << endl;
-            //auto nN = meshTer.size()+1;
-            //auto nE = meshTer[0].size();
-            for (unsigned int i=0; i+1 < meshTer[0].size(); i++) {
-                t1++;
-                t2 = 0;
-                double tcx1 = texel[0]*0.5 + i*tcChunk[0];
-                double tcx2 = tcx1 + tcChunk[0];
-                for (unsigned int j =0; j+1 < meshTer.size(); j++) {
-                    t2++;
-                    //cout << meshTer[a][b] ;
-                    double tcy1 = texel[1]*0.5 + j*tcChunk[1];
-                    double tcy2 = tcy1 + tcChunk[1];
-                    //auto n = (meshTer[nN-j][i+1]-meshTer[nN-j][i]).cross(meshTer[nN-(j+1)][i+1]-meshTer[nN-j][i]);
-                    //auto n = Vec3d(0,1,0);
-                    geo.pushVert(meshTer[j][i][0], meshTer[j][i][1], Vec2d(tcx1,tcy1));
-                    geo.pushVert(meshTer[j+1][i][0], meshTer[j+1][i][1], Vec2d(tcx1,tcy2));
-                    geo.pushVert(meshTer[j+1][i+1][0], meshTer[j+1][i+1][1], Vec2d(tcx2,tcy2));
-                    geo.pushVert(meshTer[j][i+1][0], meshTer[j][i+1][1], Vec2d(tcx2,tcy1));
-                    geo.pushQuad();
-                }
-                //cout << endl;
+        map<Vec2i, PosePtr> cache;
+
+        auto getPose = [&](int i, int j) {
+            if (cache.count(Vec2i(i,j))) return cache[Vec2i(i,j)];
+            double N = planetCoords[0]+sectorSize*(1.0-double(j)/double(gridN[1]));
+            double E = planetCoords[1]+i*sectorSize/gridN[0];
+            auto p = pla->fromLatLongPose(N, E);
+            p = pSectorInv->multRight(p);
+            cache[Vec2i(i,j)] = p;
+            //if (i == 0) pla->addPin( "", N, E, 1000);
+            //cout << "  VRTerrain::setupGeo add pin " << N << " " << E << " " << pla->getName() << endl;
+            return p;
+        };
+
+        for (int i =0; i < gridN[0]; i++) {
+            t1++;
+            t2 = 0;
+            double tcx1 = texel[0]*0.5 + i*tcChunk[0];
+            double tcx2 = tcx1 + tcChunk[0];
+            for (int j =0; j < gridN[1]; j++) {
+                t2++;
+                double tcy1 = texel[1]*0.5 + j*tcChunk[1];
+                double tcy2 = tcy1 + tcChunk[1];
+
+                auto pI0J0 = getPose(i,j);
+                auto pI0J1 = getPose(i,j+1);
+                auto pI1J1 = getPose(i+1,j+1);
+                auto pI1J0 = getPose(i+1,j);
+
+                geo.pushVert(pI0J0->pos(), pI0J0->up(), Vec2d(tcx1,tcy1));
+                geo.pushVert(pI0J1->pos(), pI0J1->up(), Vec2d(tcx1,tcy2));
+                geo.pushVert(pI1J1->pos(), pI1J1->up(), Vec2d(tcx2,tcy2));
+                geo.pushVert(pI1J0->pos(), pI1J0->up(), Vec2d(tcx2,tcy1));
+                geo.pushQuad();
             }
-            //cout << "n,e STE: " << t2 << " -- " << t1 << endl;
-            geo.apply(ptr());
         }
-	} else {
-        VRGeoData geo;
+	} else if (!localMesh) {
         int old1 = 0;
         int old2 = 0;
         for (int i =0; i < gridN[0]; i++) {
@@ -290,13 +309,15 @@ void VRTerrain::setupGeo() {
                 geo.pushVert(Vec3d(px2,0,py2), Vec3d(0,1,0), Vec2d(tcx2,tcy2));
                 geo.pushVert(Vec3d(px2,0,py1), Vec3d(0,1,0), Vec2d(tcx2,tcy1));
                 geo.pushQuad();
-                //cout << toString(px1) << "|" << toString(py1) << " ## " << toString(px2) << "|" << toString(py2) << endl;
-                //if (tx1 < 0.01) cout << toString(px1) << "|" << toString(py1) << endl;
             }
         }
-        //cout << "n,e OLD: " << old2 << " -- " << old1 << endl;
-        geo.apply(ptr());
 	}
+
+    if (geo.size() > 0) {
+        //cout << "  VRTerrain::setupGeo apply geo!! " << geo.size() << "  grid: " << gridN << endl;
+        geo.apply(ptr());
+    }
+
 #if __EMSCRIPTEN__// TODO: directly create triangles above!
     convertToTriangles();
 #else
@@ -594,12 +615,28 @@ Vec3d VRTerrain::getNormal( Vec3d p ) { // TODO!!
     return n;
 }
 
-void VRTerrain::loadMap( string path, int channel ) {
+void VRTerrain::loadMap( string path, int channel, bool shout ) {
 #ifndef WITHOUT_GDAL
-    cout << "   ----------- VRTerrain::loadMap " << path << " " << channel << endl ;
-    auto tex = loadGeoRasterData(path);
-    setMap(tex, channel);
+    if (shout) cout << "   ----------- VRTerrain::loadMap " << path << " " << channel << endl ;
+    if (useHeightoffset) {
+        heightoffset = 0.0;
+        auto tex = loadGeoRasterData(path, shout, &heightoffset);
+        setMap(tex, channel);
+    } else {
+        auto tex = loadGeoRasterData(path, shout);
+        setMap(tex, channel);
+    }
 #endif
+}
+
+void VRTerrain::setHeightOffset( bool enab ) {
+#ifndef WITHOUT_GDAL
+    useHeightoffset = enab;
+#endif
+}
+
+double VRTerrain::getHeightOffset() {
+    return heightoffset;
 }
 
 void VRTerrain::flatten(vector<Vec2d> perimeter, float h) {
@@ -748,6 +785,7 @@ uniform sampler2D tex;
 uniform float heightScale;
 uniform int local;
 uniform int channel;
+uniform float heightoffset = 0.0;
 uniform mat4 OSGModelViewProjectionMatrix;
 
 void main(void) {
@@ -763,8 +801,9 @@ void main(void) {
     if (channel == 2) height = texData.b;
     if (channel == 3) height = texData.a;
     vec4 tePosition = osg_Vertex;
-    if (local > 0) tePosition.xyz += osg_Normal * height * heightScale;
-    else tePosition.y = height * heightScale;
+    float nheight = height - heightoffset;
+    if (local > 0) tePosition.xyz += osg_Normal * nheight * heightScale;
+    else tePosition.y = nheight * heightScale;
 
 #ifdef __EMSCRIPTEN__
     gl_Position = OSGModelViewProjectionMatrix * tePosition;
@@ -802,6 +841,8 @@ const ivec3 off = ivec3(-1,0,1);
 const vec3 light = vec3(-1,-1,-0.5);
 uniform vec2 texelSize;
 uniform int doHeightTextures;
+uniform vec4 mixColor;
+uniform float mixAmount;
 uniform float waterLevel;
 uniform int isLit;
 
@@ -810,11 +851,6 @@ in vec4 vertex;
 in float height;
 vec3 norm;
 vec4 color;
-
-vec3 mixColor(vec3 c1, vec3 c2, float t) {
-	t = clamp(t, 0.0, 1.0);
-	return mix(c1, c2, t);
-}
 
 vec3 getColor() {
 	return texture2D(tex, gl_TexCoord[0].xy).rgb;
@@ -882,6 +918,7 @@ void main( void ) {
         } else {
             tc.y = 1-tc.y;
             color = texture(texPic, tc);
+            color = mix(color, mixColor, mixAmount);
         }
 	}
 
@@ -902,6 +939,9 @@ const vec3 light = vec3(-1,-1,-0.5);
 uniform vec2 texelSize;
 uniform vec2 texel;
 uniform int doHeightTextures;
+uniform vec4 mixColor;
+uniform float mixAmount;
+uniform float heightoffset = 0.0;
 uniform float waterLevel;
 uniform int isLit;
 uniform vec3 atmoColor;
@@ -912,11 +952,6 @@ in vec4 pos;
 in float height;
 vec3 norm;
 vec4 color;
-
-vec3 mixColor(vec3 c1, vec3 c2, float t) {
-	t = clamp(t, 0.0, 1.0);
-	return mix(c1, c2, t);
-}
 
 vec3 getColor() {
 	return texture2D(tex, gl_TexCoord[0].xy).rgb;
@@ -973,12 +1008,14 @@ void main( void ) {
             vec4 cG3 = texture(texGravel, tc*17);
             vec4 cG4 = texture(texGravel, tc);
             vec4 cG = mix(cG0,mix(cG1,mix(cG2,mix(cG3,cG4,0.5),0.5),0.5),0.5);
-            if (height < waterLevel) color = vec4(0.2,0.4,1,1);
-            else color = mix(cG, cW, min(cW3.r*0.1*max(height,0),1));
+            float nheight = height - heightoffset;
+            if (nheight < waterLevel) color = vec4(0.2,0.4,1,1);
+            else color = mix(cG, cW, min(cW3.r*0.1*max(nheight,0),1));
             color = mix(color, vec4(atmoColor,1), clamp(atmoThickness*length(pos.xyz), 0.0, 0.9)); // atmospheric effects
         } else {
             tc.y = 1-tc.y;
             color = texture(texPic, tc);
+            color = mix(color, mixColor, mixAmount);
         }
 	}
 
@@ -1049,6 +1086,7 @@ out vec4 vertex;
 uniform float heightScale;
 uniform int local = 0;
 uniform int channel;
+uniform float heightoffset = 0.0;
 uniform sampler2D texture;
 
 void main() {
@@ -1067,8 +1105,9 @@ void main() {
     vec3 d = mix(tcNormal[3], tcNormal[2], u);
     vec3 teNormal = mix(c, d, v);
     height = heightScale * texture2D(texture, gl_TexCoord[0].xy)[channel];
-    if (local > 0) tePosition += teNormal*height;
-    else tePosition.y = height;
+    float nheight = (height - heightoffset);
+    if (local > 0) tePosition += teNormal*nheight;
+    else tePosition.y = nheight;
     pos = gl_ModelViewProjectionMatrix * vec4(tePosition, 1);
     vertex = gl_ModelViewMatrix * vec4(tePosition, 1);
     gl_Position = pos;

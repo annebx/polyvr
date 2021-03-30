@@ -7,13 +7,15 @@ using namespace OSG;
 simpleVRPyType(Terrain, New_VRObjects_ptr);
 simpleVRPyType(Planet, New_VRObjects_ptr);
 simpleVRPyType(Orbit, New_ptr);
+simpleVRPyType(MapManager, New_ptr);
+simpleVRPyType(MapDescriptor, 0);
 
 PyMethodDef VRPyTerrain::methods[] = {
     {"setParameters", PyWrapOpt(Terrain, setParameters, "Set the terrain parameters, size, resolution, height scale, water level", "1|0|0.0001|0.7 0.9 1|1", void, Vec2d, double, double, float, float, Color3f, bool ) },
     {"setWaterLevel", PyWrap(Terrain, setWaterLevel, "Set the water level", void, float ) },
     {"setLit", PyWrap(Terrain, setLit, "Set lit or not", void, bool ) },
     {"setAtmosphericEffect", PyWrap(Terrain, setAtmosphericEffect, "Set the atmospheric density and color", void, float, Color3f ) },
-    {"loadMap", PyWrapOpt(Terrain, loadMap, "Load height map", "3", void, string, int ) },
+    {"loadMap", PyWrapOpt(Terrain, loadMap, "Load height map opt parameters ( path, channel = 3, consoleOutputEnabled = 1 )", "3|1", void, string, int, bool ) },
     {"setMap", PyWrapOpt(Terrain, setMap, "Set height map", "3", void, VRTexturePtr, int ) },
     {"getMap", PyWrap(Terrain, getMap, "Get height map", VRTexturePtr ) },
     {"physicalize", PyWrap(Terrain, physicalize, "Physicalize terrain", void, bool ) },
@@ -49,7 +51,8 @@ PyMethodDef VRPyPlanet::methods[] = {
     {"fromLatLongNormal", PyWrapOpt(Planet, fromLatLongNormal, "Get Normal on planet based on lat and long, optionally local", "0", Vec3d, double, double, bool) },
     {"fromPosLatLong", PyWrapOpt(Planet, fromPosLatLong, "Convert space position to lat and long, optionally local", "0", Vec2d, Pnt3d, bool) },
     {"localize", PyWrap(Planet, localize, "Center the planet origin on a sector", void, double, double) },
-    {"divideTIFF", PyWrap(Planet, divideTIFF, "loads sat images as .tif, dividing into .png chunks - string pathIn, string pathOut, double minLat, double maxLat, double minLon, double maxLon, double res \n        pathOut only placeholder right now, new files are saved in project directory", void, string, string, double, double, double, double, double) },
+    {"divideTIFF", PyWrap(Planet, divideTIFF, "loads sat images as .tif, dividing into .png chunks - string pathIn, string pathOut, double minLat, double maxLat, double minLon, double maxLon, double resolution \n        pathOut only placeholder right now, new files are saved in project directory", void, string, string, double, double, double, double, double) },
+    {"divideTIFFEPSG", PyWrap(Planet, divideTIFFEPSG, "loads images as .tif, dividing into .tif chunks - string pathIn, string pathOut, double minEasting, double maxEasting, double minNorthing, double maxNorthing, double pixelResolution, double chunkResolution", void, string, string, double, double, double, double, double, double, bool) },
     {"setRotation", PyWrap(Planet, setRotation, "Set rotation in days", void, double ) },
     {"getRotation", PyWrap(Planet, getRotation, "Get rotation in days", double ) },
     {"setInclination", PyWrap(Planet, setInclination, "Set inclination in rad", void, double ) },
@@ -73,6 +76,19 @@ PyMethodDef VRPyOrbit::methods[] = {
     {"getTarget", PyWrap(Orbit, getTarget, "Get target", VRObjectPtr ) },
     {"setTrail", PyWrap(Orbit, setTrail, "Set trail", void, VRObjectPtr ) },
     {"getTrail", PyWrap(Orbit, getTrail, "Get trail", VRObjectPtr ) },
+    {NULL}  /* Sentinel */
+};
+
+PyMethodDef VRPyMapManager::methods[] = {
+    {"setServer", PyWrap( MapManager, setServer, "Set server address", void, string ) },
+    {"addMapType", PyWrap( MapManager, addMapType, "Add map type (ID, local path to store map files, script name on server, file format)", void, int, string, string, string ) },
+    {"getMap", PyWrap( MapManager, getMap, "Get map file path, retreives file from server if necessary, async if given a callback 'def cb(str):', (N, E, S, callback)", VRMapDescriptorPtr, double, double, double, vector<int>, VRMapCbPtr ) },
+    {NULL}  /* Sentinel */
+};
+
+PyMethodDef VRPyMapDescriptor::methods[] = {
+    {"getMap", PyWrap( MapDescriptor, getMap, "Get ith map filename", string, int ) },
+    {"getParameters", PyWrap( MapDescriptor, getParameters, "Get chunk parameters, N, E, S", Vec3d ) },
     {NULL}  /* Sentinel */
 };
 
